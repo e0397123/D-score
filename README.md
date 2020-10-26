@@ -1,6 +1,6 @@
 # D-score
 Temporary Version, fully updated version coming soon :)
-<img src='D-score-architecture.jpg' style='align:middle'></img>
+<img src='D-score-architecture.jpg'></img>
 
 # Prerequisite 
 
