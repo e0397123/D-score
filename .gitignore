@@ -137,5 +137,4 @@ finetuned/
 hade_main/
 library/
 src/
-*.sh
-
+shell_scripts/
