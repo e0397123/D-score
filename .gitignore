@@ -129,3 +129,13 @@ dmypy.json
 .pyre/
 
 data/
+ablation_models/
+checkpoints/
+datasets/
+evaluation/
+finetuned/
+hade_main/
+library/
+src/
+*.sh
+
