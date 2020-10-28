@@ -15,7 +15,7 @@ https://drive.google.com/drive/folders/18HHbd3kt3b1xc7_QCabKeWW2Dfyj5GSf?usp=sha
 ### Finetuned LM
 https://drive.google.com/drive/folders/1WMF3FOXexb_D0U2WflRu066O622kxaq3?usp=sharing
 
-### DSTC6 Customer Support Dataset and Human Evaluation Dataset
+### DSTC6 Customer Support Dataset & The Human Evaluation Dataset
 https://github.com/dialogtekgeek/DSTC6-End-to-End-Conversation-Modeling
 
 For any use of the dataset, please cite
@@ -25,6 +25,19 @@ For any use of the dataset, please cite
   author={Hori, Chiori and Hori, Takaaki},
   journal={arXiv preprint arXiv:1706.07440},
   year={2017}
+}
+```
+
+### DSTC7 Knowledge Grounding Dataset & The Human Evaluation Dataset
+https://github.com/mgalley/DSTC7-End-to-End-Conversation-Modeling/tree/master/data_extraction
+
+For any use of the dataset, please cite
+```
+@inproceedings{Galley2019GroundedRG,
+  title={Grounded Response Generation Task at DSTC7},
+  author={Michel Galley and Chris Brockett and Xiang Gao and Jianfeng Gao and B. Dolan},
+  booktitle = {Dialog System Technology Challenges (DSTC7)},
+  year={2019}
 }
 ```
 
