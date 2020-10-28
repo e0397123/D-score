@@ -134,7 +134,7 @@ python main.py
   --data_dir {Path To Data Directory} \
   --roberta_config_file {Path To Roberta Base Model Config File} \
   --output_dir {Path To Save Checkpoints and Intermediate Files} \
-  --corpus_name {Name of Corpus for Training: persona | dstc6 | dstc7} \
+  --corpus_name {Name of Corpus for Evaluation: persona | dstc6 | dstc7} \
   --init checkpoint {Path To Finetuned LM} \
   --max_pre_len {max length of previous context} \
   --max_post_len {max length of succeeding context} \
