@@ -15,6 +15,19 @@ https://drive.google.com/drive/folders/18HHbd3kt3b1xc7_QCabKeWW2Dfyj5GSf?usp=sha
 ### Finetuned LM
 https://drive.google.com/drive/folders/1WMF3FOXexb_D0U2WflRu066O622kxaq3?usp=sharing
 
+### DSTC6 Customer Support Dataset and Human Evaluation Dataset
+https://github.com/dialogtekgeek/DSTC6-End-to-End-Conversation-Modeling
+
+For any use of the dataset, please cite
+```
+@article{hori2017end,
+  title={End-to-end conversation modeling track in DSTC6},
+  author={Hori, Chiori and Hori, Takaaki},
+  journal={arXiv preprint arXiv:1706.07440},
+  year={2017}
+}
+```
+
 ## Traing Procedure of D-score
 D-score is trained with high-quality human-human conversations. Even though for our experiments, we used
 the DSTC6 Customer Suppport, DSTC7 Knowledge-grounding and PERSONA-CHAT datasets, the framework is can be
