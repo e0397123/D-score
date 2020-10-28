@@ -1,8 +1,12 @@
 # D-score
 <img src='D-score-architecture.jpg'></img>
 
-# Prerequisite 
-
+## Prerequisite 
+```
+tensorflow=v1.15
+best_checkpoint_copier
+transformers=v2.11.0
+```
 ## Resources
 
 ### D-score checkpoints
@@ -15,13 +19,6 @@ https://drive.google.com/drive/folders/1WMF3FOXexb_D0U2WflRu066O622kxaq3?usp=sha
 D-score is trained with high-quality human-human conversations. Even though for our experiments, we used
 the DSTC6 Customer Suppport, DSTC7 Knowledge-grounding and PERSONA-CHAT datasets, the framework is can be
 also applied in other domains.
-
-### Prerequisties
-```
-tensorflow=v1.15
-best_checkpoint_copier
-transformers=v2.11.0
-```
 ### Usage	
 `python main.py`
 ```
