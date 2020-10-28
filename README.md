@@ -19,9 +19,8 @@ https://drive.google.com/drive/folders/1WMF3FOXexb_D0U2WflRu066O622kxaq3?usp=sha
 D-score is trained with high-quality human-human conversations. Even though for our experiments, we used
 the DSTC6 Customer Suppport, DSTC7 Knowledge-grounding and PERSONA-CHAT datasets, the framework is can be
 also applied in other domains.
-### Usage	
-`python main.py`
 ```
+python main.py
   --data_dir {Path To Data Directory} \
   --roberta_config_file {Path To Roberta Base Model Config File} \
   --output_dir {Path To Save Checkpoints and Intermediate Files} \
@@ -43,8 +42,8 @@ also applied in other domains.
 ```
 ## Evaluation Procedure of D-score
 The evaluation process with generate a file containing all the confidence scores from the four scorers.
-`python main.py`
 ```
+python main.py
   --data_dir {Path To Data Directory} \
   --roberta_config_file {Path To Roberta Base Model Config File} \
   --output_dir {Path To Save Checkpoints and Intermediate Files} \
