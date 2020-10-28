@@ -22,7 +22,6 @@ also applied in other domains.
 ### Usage	
 `python main.py`
 ```
-arguments:
   --data_dir {Path To Data Directory} \
   --roberta_config_file {Path To Roberta Base Model Config File} \
   --output_dir {Path To Save Checkpoints and Intermediate Files} \
@@ -41,6 +40,20 @@ arguments:
   --do_train \
   --do_eval \
   --learning_rate {default:1e-5}
-
-## Instructions to Conduct Evaluation with D-score
+```
+## Evaluation Procedure of D-score
+The evaluation process with generate a file containing all the confidence scores from the four scorers.
+`python main.py`
+```
+  --data_dir {Path To Data Directory} \
+  --roberta_config_file {Path To Roberta Base Model Config File} \
+  --output_dir {Path To Save Checkpoints and Intermediate Files} \
+  --corpus_name {Name of Corpus for Training: persona | dstc6 | dstc7} \
+  --init checkpoint {Path To Finetuned LM} \
+  --max_pre_len {max length of previous context} \
+  --max_post_len {max length of succeeding context} \
+  --max_seq_len {max length of the current response} \
+  --window_size {the value of K, actually here K refers to the total number of utterances including the pre-, post- and current utterances} \
+  --do_predict
+```
 
