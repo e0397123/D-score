@@ -40,6 +40,64 @@ For any use of the dataset, please cite
   year={2019}
 }
 ```
+### PERSONA-CHAT Dataset
+https://github.com/facebookresearch/ParlAI/tree/master/projects/convai2
+
+For any use of the dataset, please cite
+```
+@inproceedings{zhang2018personalizing,
+  title={Personalizing Dialogue Agents: I have a dog, do you have pets too?},
+  author={Zhang, Saizheng and Dinan, Emily and Urbanek, Jack and Szlam, Arthur and Kiela, Douwe and Weston, Jason},
+  booktitle={Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={2204--2213},
+  year={2018}
+}
+@article{dinan2019second,
+  title={The second conversational intelligence challenge (convai2)},
+  author={Dinan, Emily and Logacheva, Varvara and Malykh, Valentin and Miller, Alexander and Shuster, Kurt and Urbanek, Jack and Kiela, Douwe and Szlam, Arthur and Serban, Iulian and Lowe, Ryan and others},
+  journal={arXiv preprint arXiv:1902.00098},
+  year={2019}
+}
+@article{miller2017parlai,
+  title={ParlAI: A Dialog Research Software Platform},
+  author={{Miller}, A.~H. and {Feng}, W. and {Fisch}, A. and {Lu}, J. and {Batra}, D. and {Bordes}, A. and {Parikh}, D. and {Weston}, J.},
+  journal={arXiv preprint arXiv:{1705.06476}},
+  year={2017}
+}
+```
+
+### PERSONA-Chatlog Dataset
+https://github.com/facebookresearch/ParlAI/tree/master/projects/controllable_dialogue
+
+For any use of the dataset, please cite
+```
+@inproceedings{see2019makes,
+  title={What makes a good conversation? How controllable attributes affect human judgments},
+  author={See, Abigail and Roller, Stephen and Kiela, Douwe and Weston, Jason},
+  booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)},
+  pages={1702--1723},
+  year={2019}
+}
+@article{miller2017parlai,
+  title={ParlAI: A Dialog Research Software Platform},
+  author={{Miller}, A.~H. and {Feng}, W. and {Fisch}, A. and {Lu}, J. and {Batra}, D. and {Bordes}, A. and {Parikh}, D. and {Weston}, J.},
+  journal={arXiv preprint arXiv:{1705.06476}},
+  year={2017}
+}
+```
+
+### USR-PERSONA Dataset
+http://shikib.com/usr
+
+For any use of the dataset, please cite
+```
+@article{mehri2020usr,
+  title={USR: An Unsupervised and Reference Free Evaluation Metric for Dialog Generation},
+  author={Mehri, Shikib and Eskenazi, Maxine},
+  journal={arXiv preprint arXiv:2005.00456},
+  year={2020}
+}
+```
 
 ## Traing Procedure of D-score
 D-score is trained with high-quality human-human conversations. Even though for our experiments, we used
