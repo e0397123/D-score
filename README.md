@@ -29,7 +29,7 @@ For any use of the dataset, please cite
 ```
 
 ### DSTC7 Knowledge Grounding Dataset & The Human Evaluation Dataset
-https://github.com/mgalley/DSTC7-End-to-End-Conversation-Modeling/tree/master/data_extraction
+https://github.com/mgalley/DSTC7-End-to-End-Conversation-Modeling
 
 For any use of the dataset, please cite
 ```
