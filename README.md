@@ -1,6 +1,8 @@
 # D-score
 <img src='D-score-architecture.jpg'></img>
 
+D-score framework features several unique evaluation strategies. (1) D-score arrives at an overall judgement from several aspects, while the aspect judgements are built on a shared knowledge representation about the dialogue; (2) We consider that the quality of a dialogue turn should be judged not only by its preceding, but also its succeeding context; (3) We propose a range of appropriate sampling strategies for multi-task learning from human-human conversation data. 
+
 ## Prerequisite 
 ```
 tensorflow=v1.15
