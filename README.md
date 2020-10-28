@@ -33,7 +33,8 @@ python main.py
   --max_pre_len {max length of previous context} \
   --max_post_len {max length of succeeding context} \
   --max_seq_len {max length of the current response} \
-  --window_size {the value of K, actually here K refers to the total number of utterances including the pre-, post- and current utterances} \
+  --window_size {the value of K, actually here K refers to the total number 
+                of utterances including the pre-, post- and current utterances} \
   --lstm_size {default: 300} \
   --keep_checkpoint_max {default: 5} \
   --do_train \
@@ -52,7 +53,8 @@ python main.py
   --max_pre_len {max length of previous context} \
   --max_post_len {max length of succeeding context} \
   --max_seq_len {max length of the current response} \
-  --window_size {the value of K, actually here K refers to the total number of utterances including the pre-, post- and current utterances} \
+  --window_size {the value of K, actually here K refers to the total number 
+                of utterances including the pre-, post- and current utterances} \
   --do_predict
 ```
 
