@@ -51,6 +51,9 @@ parser.add_argument('--roberta_config_file', default=os.path.join(bert_path, 'ro
 parser.add_argument('--output_dir', default=os.path.join(bert_path, 'roberta_base.ckpt'),
                     help='directory to store trained model', type=str)
 
+parser.add_argument('--model_state_file', default='dscore_model',
+                    help='name of the model to save', type=str)
+
 parser.add_argument('--init_checkpoint', default=None,
                     help='Initial checkpoint (usually from a pre-trained model).', type=str)
 
@@ -79,6 +82,8 @@ parser.add_argument('window_size', default=5, help='number of utterances in a co
 parser.add_argument('batch_size', default=32, help='Total batch size for training, eval and predict.', type=int)
 
 parser.add_argument('num_train_epochs', default=10, help='Total number of training epochs to perform.', type=int)
+
+parser.add_argument('early_stopping_criteria', default=3, help='stopping criteria', type=int)
 
 parser.add_argument('embedding_dim', default=768, help='embedding dimension.', type=int)
 
@@ -733,7 +738,7 @@ def prepare_single_example(ex_index, example, utterance_label_map, max_pre_len, 
 
 
 def generate_batches(dataset, batch_size, shuffle=True,
-                     drop_last=True, device="cpu"):
+                     drop_last=True, device=None):
     """
     A generator function which wraps the PyTorch DataLoader. It will
       ensure each tensor is on the write device location.
@@ -748,14 +753,85 @@ def generate_batches(dataset, batch_size, shuffle=True,
         yield out_data_dict
 
 
-def make_train_state():
-    return {'epoch_index': 0,
+def make_train_state(args):
+    return {'stop_early': False,
+            'early_stopping_step': 0,
+            'early_stopping_best_val': 1e8,
+            'learning_rate': args.learning_rate,
+            'epoch_index': 0,
             'train_loss': [],
+            'train_random_loss': [],
+            'train_swap_loss': [],
+            'train_lm_loss': [],
             'train_acc': [],
+            'train_random_acc': [],
+            'train_swap_acc': [],
+            'train_ppl': [],
             'val_loss': [],
+            'val_random_loss': [],
+            'val_swap_loss': [],
+            'val_lm_loss': [],
             'val_acc': [],
+            'val_random_acc': [],
+            'val_swap_acc': [],
+            'val_ppl': [],
             'test_loss': -1,
-            'test_acc': -1}
+            'test_random_loss': -1,
+            'test_swap_loss': -1,
+            'test_lm_loss': -1,
+            'test_acc': -1,
+            'test_random_acc': -1,
+            'test_swap_acc': -1,
+            'test_ppl': -1,
+            'model_filename': args.model_state_file}
+
+
+def update_train_state(args, model, train_state):
+    """Handle the training state updates.
+
+    Components:
+     - Early Stopping: Prevent overfitting.
+     - Model Checkpoint: Model is saved if the model is better
+
+    :param args: main arguments
+    :param model: model to train
+    :param train_state: a dictionary representing the training state values
+    :returns:
+        a new train_state
+    """
+
+    torch.save(model.state_dict(), train_state['model_filename'] + '_{:03d}.pt'.format(train_state['epoch_index']))
+    train_state['stop_early'] = False
+
+    # Save model if performance improved
+    if train_state['epoch_index'] >= 1:
+        loss_tm1, loss_t = train_state['val_loss'][-2:]
+
+        # If loss worsened
+        if loss_t >= train_state['early_stopping_best_val']:
+            # Update step
+            train_state['early_stopping_step'] += 1
+        # Loss decreased
+        else:
+            # Save the best model
+            if loss_t < train_state['early_stopping_best_val']:
+                torch.save(model.state_dict(), train_state['model_filename'] + '_best.pt')
+
+            # Reset early stopping step
+            train_state['early_stopping_step'] = 0
+
+        # Stop early ?
+        train_state['stop_early'] = \
+            train_state['early_stopping_step'] >= args.early_stopping_criteria
+
+    return train_state
+
+
+def compute_accuracy(y_pred, y_target):
+    y_target = y_target.cpu()
+    y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  #.max(dim=1)[1]
+    n_correct = torch.eq(y_pred_indices, y_target).sum().item()
+    return n_correct / len(y_pred_indices) * 100
 
 
 def main(_):
@@ -857,145 +933,187 @@ def main(_):
         valid_dataset = prepare_data(valid_examples, utterance_label_map, opt.max_pre_len,
                                      opt.max_post_len, opt.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
 
-        train_state = make_train_state()
+        train_state = make_train_state(opt)
 
         # loss and optimizer
         loss_func = torch.nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=opt.learning_rate)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                         mode='min', factor=0.5,
+                                                         patience=1)
 
-        epoch = 0
-        best_epoch = 0
-        max_acc = 10
-        torch.save(model.state_dict(), os.path.join(opt.output_dir, 'Dscore-{:04d}.pt'.format(epoch)))
-        for epoch_index in range(opt.num_train_epochs):
-            train_state['epoch_index'] = epoch_index
+        epoch_bar = tqdm(desc='training routine',
+                         total=opt.num_train_epochs,
+                         position=0)
 
-            # Iterate over training dataset
+        train_bar = tqdm(desc='split=train',
+                         total=train_dataset.get_num_batches(opt.batch_size),
+                         position=1,
+                         leave=True)
 
-            # setup: batch generator, set loss and acc to 0, set train mode on
-            batch_generator = generate_batches(train_dataset,
-                                               batch_size=opt.batch_size,
-                                               device=device)
-            running_loss = 0.0
-            running_acc = 0.0
+        val_bar = tqdm(desc='split=val',
+                       total=valid_dataset.get_num_batches(opt.batch_size),
+                       position=1,
+                       leave=True)
 
-            model.train()
+        try:
+            for epoch_index in range(opt.num_train_epochs):
+                train_state['epoch_index'] = epoch_index
 
-            # return {'response_input_ids': response_input_ids,
-            #         'response_input_mask': response_input_mask,
-            #         'response_segment_ids': response_segment_ids,
-            #         'response_labels': response_labels,
-            #         'response_text_len': response_text_len,
-            #         'random_forward_input_ids': random_forward_input_ids,
-            #         'random_forward_input_mask': random_forward_input_mask,
-            #         'random_forward_segment_ids': random_forward_segment_ids,
-            #         'random_forward_text_len': random_forward_text_len,
-            #         'random_backward_input_ids': random_backward_input_ids,
-            #         'random_backward_input_mask': random_backward_input_mask,
-            #         'random_backward_segment_ids': random_backward_segment_ids,
-            #         'random_backward_text_len': random_backward_text_len,
-            #         'random_labels': random_labels,
-            #         'swap_forward_input_ids': swap_forward_input_ids,
-            #         'swap_forward_input_mask': swap_forward_input_mask,
-            #         'swap_forward_segment_ids': swap_forward_segment_ids,
-            #         'swap_forward_text_len': swap_forward_text_len,
-            #         'swap_backward_input_ids': swap_backward_input_ids,
-            #         'swap_backward_input_mask': swap_backward_input_mask,
-            #         'swap_backward_segment_ids': swap_backward_segment_ids,
-            #         'swap_backward_text_len': swap_backward_text_len,
-            #         'swap_labels': swap_labels,
-            #         'current_utterance_id': current_utterance_id}
+                # Iterate over training dataset
 
-            for batch_index, batch_dict in enumerate(batch_generator):
-                # the training routine is 5 steps:
+                # setup: batch generator, set loss and acc to 0, set train mode on
+                batch_generator = generate_batches(train_dataset,
+                                                   batch_size=opt.batch_size,
+                                                   device=device)
+                running_loss = 0.0
+                running_random_loss = 0.0
+                running_swap_loss = 0.0
+                running_lm_loss = 0.0
+                running_acc = 0.0
+                running_random_acc = 0.0
+                running_swap_acc = 0.0
+                running_ppl = 0.0
 
-                # step 1. zero the gradients
-                optimizer.zero_grad()
+                model.train()
 
-                # step 2. compute the output
-                random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
-                                                                                           batch_size=opt.batch_size)
+                for batch_index, batch_dict in enumerate(batch_generator):
+                    # the training routine is 5 steps:
 
-                # step 3. compute the loss
-                random_loss = loss_func(random_preds, batch_dict["random_labels"])
-                swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
-                lm_loss = loss_func(response_outputs, batch_dict["response_labels"])
+                    # step 1. zero the gradients
+                    optimizer.zero_grad()
 
-                loss_batch = loss.item()
+                    # step 2. compute the output
+                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
+                                                                                               batch_size=opt.batch_size)
 
-                running_loss += (loss_batch - running_loss) / (batch_index + 1)
+                    # step 3. compute the loss
+                    random_loss = loss_func(random_preds, batch_dict["random_labels"])
+                    swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
+                    lm_loss = loss_func(response_outputs, batch_dict["response_labels"])
 
-                # step 4. use loss to produce gradients
-                loss.backward()
+                    total_loss = random_loss + swap_loss + lm_loss
 
-                # step 5. use optimizer to take gradient step
-                optimizer.step()
+                    loss_batch = total_loss.item()
 
-                # -----------------------------------------
-                # compute the accuracy
-                acc_batch = compute_accuracy(y_pred, batch_dict['y_target'])
-                running_acc += (acc_batch - running_acc) / (batch_index + 1)
+                    running_loss += (loss_batch - running_loss) / (batch_index + 1)
 
-            train_state['train_loss'].append(running_loss)
-            train_state['train_acc'].append(running_acc)
+                    running_random_loss += (random_loss.item() - running_random_loss) / (batch_index + 1)
 
-            # Iterate over val dataset
+                    running_swap_loss += (swap_loss.item() - running_swap_loss) / (batch_index + 1)
 
-            # setup: batch generator, set loss and acc to 0, set eval mode on
-            dataset.set_split('val')
-            batch_generator = generate_batches(dataset,
-                                               batch_size=args.batch_size,
-                                               device=args.device)
-            running_loss = 0.
-            running_acc = 0.
-            classifier.eval()
-
-            for batch_index, batch_dict in enumerate(batch_generator):
-                # step 1. compute the output
-                y_pred = classifier(x_in=batch_dict['x_data'].float())
-
-                # step 2. compute the loss
-                loss = loss_func(y_pred, batch_dict['y_target'].float())
-                loss_batch = loss.item()
-                running_loss += (loss_batch - running_loss) / (batch_index + 1)
-
-                # step 3. compute the accuracy
-                acc_batch = compute_accuracy(y_pred, batch_dict['y_target'])
-                running_acc += (acc_batch - running_acc) / (batch_index + 1)
-
-            train_state['val_loss'].append(running_loss)
-            train_state['val_acc'].append(running_acc)
+                    running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
 
 
-        x_lm_sequence_segment = feature.response_segment_ids
-        x_lm_sequence_labels = feature.response_labels
+                    # step 4. use loss to produce gradients
+                    total_loss.backward()
 
-        x_lm_sequence_text_len = feature.response_text_len
+                    # step 5. use optimizer to take gradient step
+                    optimizer.step()
 
-        y_random = feature.random_labels
+                    # -----------------------------------------
+                    # compute the accuracy
+                    acc_batch_random = compute_accuracy(random_preds, batch_dict['random_labels'])
+                    acc_batch_swap = compute_accuracy(swap_preds, batch_dict['swap_labels'])
+                    acc_batch = (acc_batch_random + acc_batch_swap) / 2
 
-        random_one_hot = F.one_hot(y_random, num_classes=self.num_random_classes)
+                    running_acc += (acc_batch - running_acc) / (batch_index + 1)
 
-        random_cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=random_one_hot,
-                                                                             logits=random_preds))
-        random_prob = tf.nn.softmax(random_preds)
+                    running_random_acc += (acc_batch_random - running_random_acc) / (batch_index + 1)
 
-        y_swap = feature.swap_labels
-        current_utterance_id = feature.current_utterance_id
+                    running_swap_acc += (acc_batch_swap - running_swap_acc) / (batch_index + 1)
 
-        response_one_hot = tf.one_hot(response_labels, depth=config.vocab_size, dtype=tf.float32)
+                    running_ppl += (np.exp(lm_loss.item()) - running_ppl) / (batch_index + 1)
 
-        lm_cost = tf.nn.softmax_cross_entropy_with_logits(labels=response_one_hot, logits=response_outputs)
+                    # update bar
+                    train_bar.set_postfix(loss=running_loss, acc=running_acc, epoch=epoch_index)
 
-        sequence_mask = tf.sequence_mask(response_text_len, maxlen=response_embedding_shape[1], dtype=tf.float32)
+                train_state['train_loss'].append(running_loss)
+                train_state['train_random_loss'].append(running_random_loss)
+                train_state['train_swap_loss'].append(running_swap_loss)
+                train_state['train_lm_loss'].append(running_lm_loss)
+                train_state['train_acc'].append(running_acc)
+                train_state['train_random_acc'].append(running_random_acc)
+                train_state['train_swap_acc'].append(running_swap_acc)
+                train_state['train_ppl'].append(running_ppl)
 
-        masked_lm_cost = tf.math.multiply(lm_cost, sequence_mask)
+                # Iterate over val dataset
 
-        final_lm_loss = tf.reduce_mean(
-            tf.math.divide(tf.reduce_sum(masked_lm_cost, axis=1), tf.cast(response_text_len, dtype=tf.float32)))
+                # setup: batch generator, set loss and acc to 0, set eval mode on
+                batch_generator = generate_batches(valid_dataset,
+                                                   batch_size=opt.batch_size,
+                                                   device=device)
+                running_loss = 0.
+                running_acc = 0.
+                model.eval()
 
-        perplexity = tf.exp(
-            tf.math.divide(tf.reduce_sum(masked_lm_cost, axis=1), tf.cast(response_text_len, dtype=tf.float32)))
+                for batch_index, batch_dict in enumerate(batch_generator):
+                    # step 1. compute the output
+                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
+                                                                                               batch_size=opt.batch_size)
+
+                    # step 2. compute the loss
+                    random_loss = loss_func(random_preds, batch_dict["random_labels"])
+                    swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
+                    lm_loss = loss_func(response_outputs, batch_dict["response_labels"])
+
+                    total_loss = random_loss + swap_loss + lm_loss
+
+                    loss_batch = total_loss.item()
+
+                    running_loss += (loss_batch - running_loss) / (batch_index + 1)
+
+                    running_random_loss += (random_loss.item() - running_random_loss) / (batch_index + 1)
+
+                    running_swap_loss += (swap_loss.item() - running_swap_loss) / (batch_index + 1)
+
+                    running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
+
+                    # step 3. compute the accuracy
+                    acc_batch_random = compute_accuracy(random_preds, batch_dict['random_labels'])
+                    acc_batch_swap = compute_accuracy(swap_preds, batch_dict['swap_labels'])
+                    acc_batch = (acc_batch_random + acc_batch_swap) / 2
+
+                    running_acc += (acc_batch - running_acc) / (batch_index + 1)
+
+                    running_random_acc += (acc_batch_random - running_random_acc) / (batch_index + 1)
+
+                    running_swap_acc += (acc_batch_swap - running_swap_acc) / (batch_index + 1)
+
+                    running_ppl += (np.exp(lm_loss.item()) - running_ppl) / (batch_index + 1)
+
+                    val_bar.set_postfix(loss=running_loss,
+                                        acc=running_acc,
+                                        epoch=epoch_index)
+                    val_bar.update()
+
+                train_state['val_loss'].append(running_loss)
+                train_state['val_random_loss'].append(running_random_loss)
+                train_state['val_swap_loss'].append(running_swap_loss)
+                train_state['val_lm_loss'].append(running_lm_loss)
+                train_state['val_acc'].append(running_acc)
+                train_state['val_random_acc'].append(running_random_acc)
+                train_state['val_swap_acc'].append(running_swap_acc)
+                train_state['val_ppl'].append(running_ppl)
+
+                train_state = update_train_state(args=opt, model=model,
+                                                 train_state=train_state)
+
+                scheduler.step(train_state['val_loss'][-1])
+
+                train_bar.n = 0
+                val_bar.n = 0
+                epoch_bar.update()
+
+                if train_state['stop_early']:
+                    break
+
+                train_bar.n = 0
+                val_bar.n = 0
+                epoch_bar.update()
+
+        except KeyboardInterrupt:
+            print("Exiting loop")
 
 
 if __name__ == "__main__":
