@@ -1,19 +1,13 @@
 #! usr/bin/env python3
 # -*- coding:utf-8 -*-
 """
-Copyright 2018 The Google AI Language Team Authors.
-BASED ON Google_ALBERT.
-
-Modified script originally created by @Author: Macan
-
-@Modified by:Zhang Chen
+@Author:Zhang Chen
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 import torch
 import codecs
@@ -27,10 +21,8 @@ import torch.optim as optim
 from tqdm import tqdm
 from absl import app
 from transformers import RobertaTokenizer
-from transformers import RobertaModel, RobertaConfig
+from transformers import RobertaModel
 from torch.utils.data import Dataset, DataLoader
-
-from unified_framework import InputFeatures, InputExample
 from modeling import DscoreModel
 
 random.seed(2000)
