@@ -24,6 +24,7 @@ from transformers import RobertaTokenizer
 from transformers import RobertaModel
 from torch.utils.data import Dataset, DataLoader
 from modeling import DscoreModel
+from utils import InputExample, InputFeatures
 
 random.seed(2000)
 
