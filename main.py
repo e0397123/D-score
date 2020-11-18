@@ -19,7 +19,6 @@ import logging
 import numpy as np
 import torch.optim as optim
 from tqdm import tqdm
-from absl import app
 from transformers import RobertaTokenizer
 from transformers import RobertaModel
 from torch.utils.data import Dataset, DataLoader
@@ -27,86 +26,6 @@ from modeling import DscoreModel
 from utils import InputExample, InputFeatures
 
 random.seed(2000)
-
-bert_path = '../pretrained_module/roberta/roberta-base-pretrained-tf'
-
-root_path = '/home/chen/hade_main'
-
-parser = argparse.ArgumentParser()
-
-## Required parameters
-parser.add_argument('--data_dir', default=os.path.join(root_path, 'datasets/persona-chat/'),
-                    help="train, dev and test data dir", type=str)
-
-parser.add_argument('--roberta_config_file', default=os.path.join(bert_path, 'roberta-base-config.json'),
-                    help='roberta config file path', type=str)
-
-parser.add_argument('--output_dir', default=os.path.join(bert_path, 'roberta_base.pt'),
-                    help='directory to store trained model', type=str)
-
-parser.add_argument('--model_state_file', default='dscore_model',
-                    help='name of the model to save', type=str)
-
-parser.add_argument('--init_checkpoint', default=None,
-                    help='Initial checkpoint (usually from a pre-trained model).', type=str)
-
-parser.add_argument('--corpus_name', default='book', help="corpus name", type=str)
-
-parser.add_argument('--task', default='nsp', help='which model to train', type=str)
-
-parser.add_argument('--eval_type', default='eval', help='specify type of data to evaluate', type=str)
-
-parser.add_argument('--dupe_factor', default=1, help='number of times to duplicate input', type=int)
-
-parser.add_argument('max_pre_len', default=256,
-                    help='The maximum total input sequence length after Sentencepiece tokenization.',
-                    type=int)
-
-parser.add_argument('max_post_len', default=256,
-                    help='The maximum total input sequence length after Sentencepiece tokenization.',
-                    type=int)
-
-parser.add_argument('max_seq_len', default=256,
-                    help='The maximum total response sequence length after Sentencepiece tokenization.',
-                    type=int)
-
-parser.add_argument('window_size', default=5, help='number of utterances in a context window', type=int)
-
-parser.add_argument('batch_size', default=32, help='Total batch size for training, eval and predict.', type=int)
-
-parser.add_argument('num_train_epochs', default=10, help='Total number of training epochs to perform.', type=int)
-
-parser.add_argument('early_stopping_criteria', default=3, help='stopping criteria', type=int)
-
-parser.add_argument('embedding_dim', default=768, help='embedding dimension.', type=int)
-
-parser.add_argument('lstm_size', default=300, help='size of lstm units.', type=int)
-
-parser.add_argument('num_layers', default=1, help='number of rnn layers, default is 1.', type=int)
-
-parser.add_argument('learning_rate', default=1e-5, help='The initial learning rate for Adam.', type=float)
-
-parser.add_argument('dropout_rate', default=0.5, help='Dropout rate', type=float)
-
-parser.add_argument('l2_reg_lambda', default=0.2, help='l2_reg_lambda', type=float)
-
-parser.add_argument('warmup_proportion', default=0.025,
-                    help='Proportion of training to perform linear learning rate warmup for '
-                         'E.g., 0.1 = 10% of training.', type=float)
-
-parser.add_argument('do_train', action="store_true", help='Whether to run training.', type=bool)
-
-parser.add_argument('do_eval', action="store_true",
-                    help='Whether to run eval on the dev set.', type=bool)
-
-parser.add_argument('do_predict', action="store_true",
-                    help='Whether to run the predict in inference mode on the test set.', type=bool)
-
-parser.add_argument('do_lower_case', action="store_false", help='Whether to lower case the input text.', type=bool)
-
-parser.add_argument('clean', action="store_true", help="whether to clean output folder", type=bool)
-
-opt = parser.parse_args()
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
@@ -116,12 +35,13 @@ logger = logging.getLogger('[D-score]')
 
 class Randomizer(object):
 
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, args):
         self.labels = []
         self.output_dir = output_dir
         with codecs.open('dull_responses.txt', mode='r', encoding='utf-8') as rf:
             lines = rf.readlines()
         self.dull_responses = [l.strip() for l in lines]
+        self.args = args
 
     def process_data(self, data_dir, corpus_name, split):
         logger.info("*************** reading {} data*****************************".format(split))
@@ -153,30 +73,30 @@ class Randomizer(object):
         return ids
 
     def get_train_example(self, train_paragraphs, train_paragraph_uids, context_window_size, split='train'):
-        if os.path.exists(os.path.join(opt.output_dir, '{}_lines.pkl'.format(split))):
-            return self._create_example(pickle.load(open(os.path.join(opt.output_dir,
+        if os.path.exists(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split))):
+            return self._create_example(pickle.load(open(os.path.join(self.args.output_dir,
                                                                       '{}_lines.pkl'.format(split)), 'rb')), split)
         else:
             lines = self._read_data(train_paragraphs, train_paragraph_uids, context_window_size, split)
-            pickle.dump(lines, open(os.path.join(opt.output_dir, 'train_lines.pkl'), 'wb'))
+            pickle.dump(lines, open(os.path.join(self.args.output_dir, 'train_lines.pkl'), 'wb'))
             return self._create_example(lines, split)
 
     def get_valid_example(self, valid_paragraphs, valid_paragraph_uids, context_window_size, split='valid'):
-        if os.path.exists(os.path.join(opt.output_dir, '{}_lines.pkl'.format(split))):
-            return self._create_example(pickle.load(open(os.path.join(opt.output_dir,
+        if os.path.exists(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split))):
+            return self._create_example(pickle.load(open(os.path.join(self.args.output_dir,
                                                                       'valid_lines.pkl'), 'rb')), split)
         else:
             lines = self._read_data(valid_paragraphs, valid_paragraph_uids, context_window_size, split)
-            pickle.dump(lines, open(os.path.join(opt.output_dir, '{}_lines.pkl'.format(split)), 'wb'))
+            pickle.dump(lines, open(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split)), 'wb'))
             return self._create_example(lines, split)
 
     def get_eval_example(self, eval_paragraphs, eval_paragraph_uids, context_window_size, split):
-        if os.path.exists(os.path.join(opt.output_dir, '{}_lines.pkl'.format(split))):
-            return self._create_example(pickle.load(open(os.path.join(opt.output_dir,
+        if os.path.exists(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split))):
+            return self._create_example(pickle.load(open(os.path.join(self.args.output_dir,
                                                                       '{}_lines.pkl'.format(split)), 'rb')), split)
         else:
             lines = self._read_data(eval_paragraphs, eval_paragraph_uids, context_window_size, split)
-            pickle.dump(lines, open(os.path.join(opt.output_dir, '{}_lines.pkl'.format(split)), 'wb'))
+            pickle.dump(lines, open(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split)), 'wb'))
             return self._create_example(lines, split)
 
     def _create_example(self, lines, set_type):
@@ -211,7 +131,7 @@ class Randomizer(object):
         logger.info("*************** form {} sentence triplet *****************************".format(split))
         lines = []
         if split == 'train' or split == 'valid':
-            for t in range(opt.dupe_factor):
+            for t in range(self.args.dupe_factor):
                 for idx, d in enumerate(tqdm(paragraphs)):
                     if len(d) < context_window_size:
                         raise ValueError("length of paragraph {0} is less than "
@@ -820,7 +740,7 @@ def compute_accuracy(y_pred, y_target):
     return n_correct / len(y_pred_indices) * 100
 
 
-def main(_):
+def main(args):
 
     processors = {
         "nsp": Randomizer
@@ -828,10 +748,10 @@ def main(_):
 
     roberta_tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
 
-    roberta_model = RobertaModel.from_pretrained(opt.init_checkpoint)
+    roberta_model = RobertaModel.from_pretrained(args.init_checkpoint)
 
-    if opt.clean and opt.do_train:
-        if os.path.exists(opt.output_dir):
+    if args.clean and args.do_train:
+        if os.path.exists(args.output_dir):
             def del_file(path):
                 ls = os.listdir(path)
                 for i in ls:
@@ -842,17 +762,17 @@ def main(_):
                         os.remove(c_path)
 
             try:
-                del_file(opt.output_dir)
+                del_file(args.output_dir)
             except Exception as e:
                 logger.info(e)
                 logger.info('please remove the files of output dir and data.conf')
                 exit(-1)
 
     # check output dir exists
-    if not os.path.exists(opt.output_dir):
-        os.mkdir(opt.output_dir)
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
 
-    processor = processors[opt.task](opt.output_dir)
+    processor = processors[args.task](args.output_dir)
 
     logger.info("total vocabulary size is: {}".format(roberta_tokenizer.vocab_size))
 
@@ -861,47 +781,47 @@ def main(_):
     num_train_steps = None
     num_warmup_steps = None
 
-    if opt.do_train and opt.do_eval:
-        if not os.path.exists(os.path.join(opt.output_dir, 'train_lines.pkl')):
-            train_paragraphs, train_paragraph_uids = processor.process_data(opt.data_dir, opt.corpus_name, 'train')
+    if args.do_train and args.do_eval:
+        if not os.path.exists(os.path.join(args.output_dir, 'train_lines.pkl')):
+            train_paragraphs, train_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'train')
         else:
             train_paragraphs, train_paragraph_uids = None, None
 
         train_examples = processor.get_train_example(train_paragraphs,
                                                      train_paragraph_uids,
-                                                     context_window_size=opt.window_size,
+                                                     context_window_size=args.window_size,
                                                      split='train')
         num_train_steps = int(
-            len(train_examples) * 1.0 / opt.batch_size * opt.num_train_epochs)
+            len(train_examples) * 1.0 / args.batch_size * args.num_train_epochs)
         if num_train_steps < 1:
             raise AttributeError('training data is so small...')
 
-        num_warmup_steps = int(num_train_steps * opt.warmup_proportion)
+        num_warmup_steps = int(num_train_steps * args.warmup_proportion)
 
         logger.info("***** Running training *****")
         logger.info("  Num examples = %d", len(train_examples))
-        logger.info("  Batch size = %d", opt.batch_size)
+        logger.info("  Batch size = %d", args.batch_size)
         logger.info("  Num steps = %d", num_train_steps)
 
-        if not os.path.exists(os.path.join(opt.output_dir, 'valid_lines.pkl')):
-            valid_paragraphs, valid_paragraph_uids = processor.process_data(opt.data_dir, opt.corpus_name, 'valid')
+        if not os.path.exists(os.path.join(args.output_dir, 'valid_lines.pkl')):
+            valid_paragraphs, valid_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'valid')
         else:
             valid_paragraphs, valid_paragraph_uids = None, None
 
         valid_examples = processor.get_valid_example(valid_paragraphs,
                                                      valid_paragraph_uids,
-                                                     context_window_size=opt.window_size,
+                                                     context_window_size=args.window_size,
                                                      split='valid')
 
-        num_valid_steps = int(len(valid_examples) * 1.0 / opt.batch_size)
+        num_valid_steps = int(len(valid_examples) * 1.0 / args.batch_size)
 
         # 打印验证集数据信息
         logger.info("***** Running evaluation *****")
         logger.info("  Num examples = %d", len(valid_examples))
-        logger.info("  Batch size = %d", opt.batch_size)
+        logger.info("  Batch size = %d", args.batch_size)
         logger.info("  Num valid steps = %d", num_valid_steps)
 
-    utterance_label_list = processor.get_sentence_ids(opt.data_dir, opt.corpus_name)
+    utterance_label_list = processor.get_sentence_ids(args.data_dir, args.corpus_name)
 
     utterance_label_map = {}
     for (i, label) in enumerate(utterance_label_list, 1):
@@ -909,48 +829,48 @@ def main(_):
 
     logger.info("Initializing D-score model --------------------------------------------------")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = DscoreModel(roberta_model, opt.embedding_dim, opt.lstm_size,
-                        opt.dropout_rate, opt.num_layers, device, roberta_tokenizer.vocab_size,
-                        num_random_classes=2, num_swap_classes=2, is_training=opt.do_train, bidirectional=True)
+    model = DscoreModel(roberta_model, args.embedding_dim, args.lstm_size,
+                        args.dropout_rate, args.num_layers, device, roberta_tokenizer.vocab_size,
+                        num_random_classes=2, num_swap_classes=2, is_training=args.do_train, bidirectional=True)
 
-    if opt.do_train and opt.do_eval:
-        train_dataset = prepare_data(train_examples, utterance_label_map, opt.max_pre_len,
-                                     opt.max_post_len, opt.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
-        valid_dataset = prepare_data(valid_examples, utterance_label_map, opt.max_pre_len,
-                                     opt.max_post_len, opt.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
+    if args.do_train and args.do_eval:
+        train_dataset = prepare_data(train_examples, utterance_label_map, args.max_pre_len,
+                                     args.max_post_len, args.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
+        valid_dataset = prepare_data(valid_examples, utterance_label_map, args.max_pre_len,
+                                     args.max_post_len, args.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
 
-        train_state = make_train_state(opt)
+        train_state = make_train_state(args)
 
         # loss and optimizer
         loss_func = torch.nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(), lr=opt.learning_rate)
+        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
                                                          mode='min', factor=0.5,
                                                          patience=1)
 
         epoch_bar = tqdm(desc='training routine',
-                         total=opt.num_train_epochs,
+                         total=args.num_train_epochs,
                          position=0)
 
         train_bar = tqdm(desc='split=train',
-                         total=train_dataset.get_num_batches(opt.batch_size),
+                         total=train_dataset.get_num_batches(args.batch_size),
                          position=1,
                          leave=True)
 
         val_bar = tqdm(desc='split=val',
-                       total=valid_dataset.get_num_batches(opt.batch_size),
+                       total=valid_dataset.get_num_batches(args.batch_size),
                        position=1,
                        leave=True)
 
         try:
-            for epoch_index in range(opt.num_train_epochs):
+            for epoch_index in range(args.num_train_epochs):
                 train_state['epoch_index'] = epoch_index
 
                 # Iterate over training dataset
 
                 # setup: batch generator, set loss and acc to 0, set train mode on
                 batch_generator = generate_batches(train_dataset,
-                                                   batch_size=opt.batch_size,
+                                                   batch_size=args.batch_size,
                                                    device=device)
                 running_loss = 0.0
                 running_random_loss = 0.0
@@ -971,7 +891,7 @@ def main(_):
 
                     # step 2. compute the output
                     random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
-                                                                                               batch_size=opt.batch_size)
+                                                                                               batch_size=args.batch_size)
 
                     # step 3. compute the loss
                     random_loss = loss_func(random_preds, batch_dict["random_labels"])
@@ -1027,7 +947,7 @@ def main(_):
 
                 # setup: batch generator, set loss and acc to 0, set eval mode on
                 batch_generator = generate_batches(valid_dataset,
-                                                   batch_size=opt.batch_size,
+                                                   batch_size=args.batch_size,
                                                    device=device)
                 running_loss = 0.
                 running_acc = 0.
@@ -1036,7 +956,7 @@ def main(_):
                 for batch_index, batch_dict in enumerate(batch_generator):
                     # step 1. compute the output
                     random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
-                                                                                               batch_size=opt.batch_size)
+                                                                                               batch_size=args.batch_size)
 
                     # step 2. compute the loss
                     random_loss = loss_func(random_preds, batch_dict["random_labels"])
@@ -1103,4 +1023,151 @@ def main(_):
 
 
 if __name__ == "__main__":
-    app.run(main)
+
+    parser = argparse.ArgumentParser()
+
+    # Required parameters
+
+    parser.add_argument('--data_dir',
+                        default=None,
+                        help="train, dev and test data dir",
+                        type=str,
+                        required=True)
+
+    parser.add_argument('--output_dir',
+                        default=None,
+                        help='directory to store trained model',
+                        type=str,
+                        required=True)
+
+    parser.add_argument('--model_state_file',
+                        default='dscore_model',
+                        help='name of the model to save',
+                        type=str,
+                        required=True)
+
+    parser.add_argument('--init_checkpoint',
+                        default=None,
+                        help='Initial checkpoint (usually from a pre-trained model).',
+                        type=str,
+                        required=True)
+
+    # Optional parameters
+    parser.add_argument('--corpus_name',
+                        default='book',
+                        help="corpus name",
+                        type=str)
+
+    parser.add_argument('--roberta_config_file',
+                        default=None,
+                        help='roberta config file path', type=str)
+
+    parser.add_argument('--task',
+                        default='nsp',
+                        help='which model to train',
+                        type=str)
+
+    parser.add_argument('--eval_type',
+                        default='eval',
+                        help='specify type of data to evaluate',
+                        type=str)
+
+    parser.add_argument('--dupe_factor',
+                        default=1,
+                        help='number of times to duplicate input',
+                        type=int)
+
+    parser.add_argument('--max_pre_len',
+                        default=256,
+                        help='The maximum total input sequence length after Sentencepiece tokenization.',
+                        type=int)
+
+    parser.add_argument('--max_post_len',
+                        default=256,
+                        help='The maximum total input sequence length after Sentencepiece tokenization.',
+                        type=int)
+
+    parser.add_argument('--max_seq_len',
+                        default=256,
+                        help='The maximum total response sequence length after Sentencepiece tokenization.',
+                        type=int)
+
+    parser.add_argument('--window_size',
+                        default=5,
+                        help='number of utterances in a context window',
+                        type=int)
+
+    parser.add_argument('--batch_size',
+                        default=32,
+                        help='Total batch size for training, eval and predict.',
+                        type=int)
+
+    parser.add_argument('--num_train_epochs',
+                        default=10,
+                        help='Total number of training epochs to perform.',
+                        type=int)
+
+    parser.add_argument('--early_stopping_criteria',
+                        default=3,
+                        help='stopping criteria',
+                        type=int)
+
+    parser.add_argument('--embedding_dim',
+                        default=768,
+                        help='embedding dimension.',
+                        type=int)
+
+    parser.add_argument('--lstm_size',
+                        default=300,
+                        help='size of lstm units.',
+                        type=int)
+
+    parser.add_argument('--num_layers',
+                        default=1,
+                        help='number of rnn layers, default is 1.',
+                        type=int)
+
+    parser.add_argument('--learning_rate',
+                        default=1e-5,
+                        help='The initial learning rate for Adam.',
+                        type=float)
+
+    parser.add_argument('--dropout_rate',
+                        default=0.5,
+                        help='Dropout rate',
+                        type=float)
+
+    parser.add_argument('--l2_reg_lambda',
+                        default=0.2,
+                        help='l2_reg_lambda',
+                        type=float)
+
+    parser.add_argument('--warmup_proportion',
+                        default=0.025,
+                        help='Proportion of training to perform linear learning rate warmup for '
+                             'E.g., 0.1 = 10% of training.',
+                        type=float)
+
+    parser.add_argument('--do_train',
+                        action="store_true",
+                        help='Whether to run training.')
+
+    parser.add_argument('--do_eval',
+                        action="store_true",
+                        help='Whether to run eval on the dev set.')
+
+    parser.add_argument('--do_predict',
+                        action="store_true",
+                        help='Whether to run the predict in inference mode on the test set.')
+
+    parser.add_argument('--do_lower_case',
+                        action="store_false",
+                        help='Whether to lower case the input text.')
+
+    parser.add_argument('--clean',
+                        action="store_true",
+                        help="whether to clean output folder")
+
+    opt = parser.parse_args()
+
+    main(opt)
