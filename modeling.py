@@ -216,13 +216,13 @@ class DscoreModel(nn.Module):
         # [batch_size, 2*hidden_size]
         dense1_random = self.fc1_random(rel_random)
         if self.is_training:
-            drop1_random = self.dropout(dense1_random)
+            drop1_random = self.dropout_layer(dense1_random)
         else:
             drop1_random = dense1_random
         # [batch_size, hidden_size]
         dense2_random = self.fc2_random(drop1_random)
         if self.is_training:
-            drop2_random = self.dropout(dense2_random)
+            drop2_random = self.dropout_layer(dense2_random)
         else:
             drop2_random = dense2_random
         # [batch_size, num_classes]
@@ -293,17 +293,17 @@ class DscoreModel(nn.Module):
         # [batch_size, 2*hidden_size]
         dense1_swap = self.fc1_swap(rel_swap)
         if self.is_training:
-            drop1_swap = self.dropout(dense1_swap)
+            drop1_swap = self.dropout_layer(dense1_swap)
         else:
             drop1_swap = dense1_swap
         # [batch_size, hidden_size]
-        dense2_swap = self.fc2(drop1_swap)
+        dense2_swap = self.fc2_swap(drop1_swap)
         if self.is_training:
-            drop2_swap = self.dropout(dense2_swap)
+            drop2_swap = self.dropout_layer(dense2_swap)
         else:
             drop2_swap = dense2_swap
         # [batch_size, num_classes]
-        swap_preds = self.fc3(drop2_swap)
+        swap_preds = self.fc3_swap(drop2_swap)
 
         swap_prob = F.softmax(swap_preds, dim=-1)
 
