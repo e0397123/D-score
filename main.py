@@ -35,18 +35,14 @@ logger = logging.getLogger('[D-score]')
 
 class Randomizer(object):
 
-    def __init__(self, output_dir, args):
+    def __init__(self, args):
         self.labels = []
-        self.output_dir = output_dir
-        with codecs.open('dull_responses.txt', mode='r', encoding='utf-8') as rf:
-            lines = rf.readlines()
-        self.dull_responses = [l.strip() for l in lines]
         self.args = args
 
     def process_data(self, data_dir, corpus_name, split):
         logger.info("*************** reading {} data*****************************".format(split))
-        data = pd.read_csv(os.path.join(data_dir, corpus_name + '_main.csv'))
-        meta_data = pd.read_csv(os.path.join(data_dir, corpus_name + '_metadata.csv'))
+        data = pd.read_csv(os.path.join(data_dir, corpus_name + '_main.csv'), index=None)
+        meta_data = pd.read_csv(os.path.join(data_dir, corpus_name + '_meta.csv'), index=None)
         paragraph_ids = list(meta_data[meta_data['type'] == split]['paragraph_id'])
         paragrahs = []
         paragraph_uids = []
@@ -772,7 +768,7 @@ def main(args):
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    processor = processors[args.task](args.output_dir)
+    processor = processors[args.task](args)
 
     logger.info("total vocabulary size is: {}".format(roberta_tokenizer.vocab_size))
 
