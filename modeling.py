@@ -69,6 +69,7 @@ class DscoreModel(nn.Module):
         """
         super(DscoreModel, self).__init__()
         # forward(input_ids)
+        self.device = device
         self.embeddings = model.embeddings
         self.encoder = model.encoder
         self.config = model.config
@@ -97,11 +98,11 @@ class DscoreModel(nn.Module):
         self.num_lstm_layer = num_lstm_layer
         self.lstm_units = hidden_dim
         self.m_random = Variable(torch.fmod(torch.empty([hidden_dim * self.num_directions,
-                                                         hidden_dim * self.num_directions]), 2))
+                                                         hidden_dim * self.num_directions]), 2)).to(device)
         nn.init.normal_(self.m_random, std=0.02)
 
         self.m_swap = Variable(torch.fmod(torch.empty([hidden_dim * self.num_directions,
-                                                       hidden_dim * self.num_directions]), 2))
+                                                       hidden_dim * self.num_directions]), 2)).to(device)
         nn.init.normal_(self.m_swap, std=0.02)
 
         self.gelu = nn.GELU()
@@ -110,8 +111,10 @@ class DscoreModel(nn.Module):
         self.fc_lm = nn.Linear(hidden_dim, vocab_size)
 
     def init_hidden(self, batch_size):
-        h, c = (Variable(torch.zeros(self.num_lstm_layer * self.num_directions, batch_size, self.lstm_units)),
-                Variable(torch.zeros(self.num_lstm_layer * self.num_directions, batch_size, self.lstm_units)))
+        h, c = (Variable(torch.zeros(self.num_lstm_layer * self.num_directions, batch_size,
+                                     self.lstm_units)).to(self.device),
+                Variable(torch.zeros(self.num_lstm_layer * self.num_directions, batch_size,
+                                     self.lstm_units)).to(self.device))
         return h, c
 
     def get_extended_attention_mask(self, attention_mask, input_shape, is_decoder=False):
@@ -163,7 +166,8 @@ class DscoreModel(nn.Module):
             random_forward_bert_output = self.dropout_layer(random_forward_bert_output)
         random_forward_packed_embedded = pack_padded_sequence(random_forward_bert_output,
                                                               x_random_length_forward,
-                                                              batch_first=True)
+                                                              batch_first=True,
+                                                              enforce_sorted=False)
         random_forward_lstm_output, (_, _) = self.lstm(random_forward_packed_embedded, (h_0, c_0))
         random_forward_output_unpacked, random_forward_output_lengths = pad_packed_sequence(random_forward_lstm_output,
                                                                                             batch_first=True)
@@ -186,7 +190,8 @@ class DscoreModel(nn.Module):
             random_backward_bert_output = self.dropout_layer(random_backward_bert_output)
         random_backward_packed_embedded = pack_padded_sequence(random_backward_bert_output,
                                                                x_random_length_backward,
-                                                               batch_first=True)
+                                                               batch_first=True,
+                                                               enforce_sorted=False)
         random_backward_lstm_output, (_, _) = self.lstm(random_backward_packed_embedded,
                                                         (h_0, c_0))
         random_backward_output_unpacked, \
@@ -241,7 +246,8 @@ class DscoreModel(nn.Module):
             swap_forward_bert_output = self.dropout_layer(swap_forward_bert_output)
         swap_forward_packed_embedded = pack_padded_sequence(swap_forward_bert_output,
                                                             x_swap_length_forward,
-                                                            batch_first=True)
+                                                            batch_first=True,
+                                                            enforce_sorted=False)
         swap_forward_lstm_output, (_, _) = self.lstm(swap_forward_packed_embedded, (h_0, c_0))
         swap_forward_output_unpacked, swap_forward_output_lengths = pad_packed_sequence(swap_forward_lstm_output,
                                                                                         batch_first=True)
@@ -263,7 +269,8 @@ class DscoreModel(nn.Module):
             swap_backward_bert_output = self.dropout_layer(swap_backward_bert_output)
         swap_backward_packed_embedded = pack_padded_sequence(swap_backward_bert_output,
                                                              x_swap_length_backward,
-                                                             batch_first=True)
+                                                             batch_first=True,
+                                                             enforce_sorted=False)
         swap_backward_lstm_output, (_, _) = self.lstm(swap_backward_packed_embedded, (h_0, c_0))
         swap_backward_output_unpacked, swap_backward_output_lengths = pad_packed_sequence(swap_backward_lstm_output,
                                                                                           batch_first=True)

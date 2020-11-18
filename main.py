@@ -41,8 +41,8 @@ class Randomizer(object):
 
     def process_data(self, data_dir, corpus_name, split):
         logger.info("*************** reading {} data*****************************".format(split))
-        data = pd.read_csv(os.path.join(data_dir, corpus_name + '_main.csv'), index=None)
-        meta_data = pd.read_csv(os.path.join(data_dir, corpus_name + '_meta.csv'), index=None)
+        data = pd.read_csv(os.path.join(data_dir, corpus_name + '_main.csv'))
+        meta_data = pd.read_csv(os.path.join(data_dir, corpus_name + '_meta.csv'))
         paragraph_ids = list(meta_data[meta_data['type'] == split]['paragraph_id'])
         paragrahs = []
         paragraph_uids = []
@@ -399,17 +399,24 @@ def prepare_data(examples,
                  max_post_len,
                  max_seq_len,
                  tokenizer=None,
-                 is_training=True):
+                 is_training=True,
+                 output_dir=None,
+                 split='train'):
 
-    feature_list = []
-    for (ex_index, example) in enumerate(examples):
-        if ex_index % 5000 == 0:
-            logger.info("Reading example %d of %d" % (ex_index, len(examples)))
+    feature_fname = os.path.join(output_dir, "{}_feature_list.pkl".format(split))
+    if os.path.exists(feature_fname):
+        feature_list = pickle.load(open(feature_fname, 'rb'))
+    else:
+        feature_list = []
+        for (ex_index, example) in enumerate(examples):
+            if ex_index % 5000 == 0:
+                logger.info("Reading example %d of %d" % (ex_index, len(examples)))
 
-        feature = prepare_single_example(ex_index, example, utterance_label_map,
-                                         max_pre_len, max_post_len, max_seq_len,
-                                         tokenizer=tokenizer, is_training=is_training)
-        feature_list.append(feature)
+            feature = prepare_single_example(ex_index, example, utterance_label_map,
+                                             max_pre_len, max_post_len, max_seq_len,
+                                             tokenizer=tokenizer, is_training=is_training)
+            feature_list.append(feature)
+        pickle.dump(feature_list, open(feature_fname, 'wb'))
 
     return DscoreDataset(feature_list)
 
@@ -787,6 +794,7 @@ def main(args):
                                                      train_paragraph_uids,
                                                      context_window_size=args.window_size,
                                                      split='train')
+
         num_train_steps = int(
             len(train_examples) * 1.0 / args.batch_size * args.num_train_epochs)
         if num_train_steps < 1:
@@ -829,11 +837,17 @@ def main(args):
                         args.dropout_rate, args.num_layers, device, roberta_tokenizer.vocab_size,
                         num_random_classes=2, num_swap_classes=2, is_training=args.do_train, bidirectional=True)
 
+    model = model.to(device)
+
     if args.do_train and args.do_eval:
         train_dataset = prepare_data(train_examples, utterance_label_map, args.max_pre_len,
-                                     args.max_post_len, args.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
+                                     args.max_post_len, args.max_seq_len,
+                                     tokenizer=roberta_tokenizer, is_training=True,
+                                     output_dir=args.output_dir, split='train')
         valid_dataset = prepare_data(valid_examples, utterance_label_map, args.max_pre_len,
-                                     args.max_post_len, args.max_seq_len, tokenizer=roberta_tokenizer, is_training=True)
+                                     args.max_post_len, args.max_seq_len,
+                                     tokenizer=roberta_tokenizer, is_training=True,
+                                     output_dir=args.output_dir, split='valid')
 
         train_state = make_train_state(args)
 
@@ -886,7 +900,7 @@ def main(args):
                     optimizer.zero_grad()
 
                     # step 2. compute the output
-                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
+                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
                                                                                                batch_size=args.batch_size)
 
                     # step 3. compute the loss
@@ -951,7 +965,7 @@ def main(args):
 
                 for batch_index, batch_dict in enumerate(batch_generator):
                     # step 1. compute the output
-                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feauture=batch_dict,
+                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
                                                                                                batch_size=args.batch_size)
 
                     # step 2. compute the loss

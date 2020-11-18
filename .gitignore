@@ -138,6 +138,6 @@ hade_main/
 library/
 src/
 shell_scripts/
-
+run*/
 *.sh
 *lm_finetuned
