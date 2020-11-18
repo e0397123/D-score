@@ -41,7 +41,7 @@ parser.add_argument('--data_dir', default=os.path.join(root_path, 'datasets/pers
 parser.add_argument('--roberta_config_file', default=os.path.join(bert_path, 'roberta-base-config.json'),
                     help='roberta config file path', type=str)
 
-parser.add_argument('--output_dir', default=os.path.join(bert_path, 'roberta_base.ckpt'),
+parser.add_argument('--output_dir', default=os.path.join(bert_path, 'roberta_base.pt'),
                     help='directory to store trained model', type=str)
 
 parser.add_argument('--model_state_file', default='dscore_model',
@@ -84,9 +84,6 @@ parser.add_argument('lstm_size', default=300, help='size of lstm units.', type=i
 
 parser.add_argument('num_layers', default=1, help='number of rnn layers, default is 1.', type=int)
 
-parser.add_argument('keep_checkpoint_max', default=3,
-                    help='number of checkpoints to keep, default is 3.', type=int)
-
 parser.add_argument('learning_rate', default=1e-5, help='The initial learning rate for Adam.', type=float)
 
 parser.add_argument('dropout_rate', default=0.5, help='Dropout rate', type=float)
@@ -97,21 +94,17 @@ parser.add_argument('warmup_proportion', default=0.025,
                     help='Proportion of training to perform linear learning rate warmup for '
                          'E.g., 0.1 = 10% of training.', type=float)
 
-parser.add_argument('do_train', default=False, help='Whether to run training.', type=bool)
+parser.add_argument('do_train', action="store_true", help='Whether to run training.', type=bool)
 
-parser.add_argument('do_eval', default=False,
+parser.add_argument('do_eval', action="store_true",
                     help='Whether to run eval on the dev set.', type=bool)
 
-parser.add_argument('do_predict', default=False,
+parser.add_argument('do_predict', action="store_true",
                     help='Whether to run the predict in inference mode on the test set.', type=bool)
 
-parser.add_argument('filter_adam_var', default=False,
-                    help='after training do filter Adam params from model and save no Adam params model in file.',
-                    type=bool)
+parser.add_argument('do_lower_case', action="store_false", help='Whether to lower case the input text.', type=bool)
 
-parser.add_argument('do_lower_case', default=True, help='Whether to lower case the input text.', type=bool)
-
-parser.add_argument('clean', default=False, help="whether to clean output folder", type=bool)
+parser.add_argument('clean', action="store_true", help="whether to clean output folder", type=bool)
 
 opt = parser.parse_args()
 
