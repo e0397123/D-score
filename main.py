@@ -738,7 +738,7 @@ def update_train_state(args, model, train_state):
 
 def compute_accuracy(y_pred, y_target):
     y_target = y_target.cpu()
-    y_pred_indices = (torch.sigmoid(y_pred) > 0.5).cpu().long()  #.max(dim=1)[1]
+    y_pred_indices = (torch.argmax(y_pred, dim=-1)).cpu().long()  #.max(dim=1)[1]
     n_correct = torch.eq(y_pred_indices, y_target).sum().item()
     return n_correct / len(y_pred_indices) * 100
 
@@ -839,11 +839,19 @@ def main(args):
 
     model = model.to(device)
 
+    logger.info("Done initializing D-score model --------------------------------------------------")
+
     if args.do_train and args.do_eval:
+
+        logger.info("preparing training data --------------------------------------------------")
+
         train_dataset = prepare_data(train_examples, utterance_label_map, args.max_pre_len,
                                      args.max_post_len, args.max_seq_len,
                                      tokenizer=roberta_tokenizer, is_training=True,
                                      output_dir=args.output_dir, split='train')
+
+        logger.info("preparing validating data --------------------------------------------------")
+
         valid_dataset = prepare_data(valid_examples, utterance_label_map, args.max_pre_len,
                                      args.max_post_len, args.max_seq_len,
                                      tokenizer=roberta_tokenizer, is_training=True,
@@ -871,6 +879,8 @@ def main(args):
                        total=valid_dataset.get_num_batches(args.batch_size),
                        position=1,
                        leave=True)
+
+        logger.info("start training --------------------------------------------------")
 
         try:
             for epoch_index in range(args.num_train_epochs):
@@ -906,7 +916,8 @@ def main(args):
                     # step 3. compute the loss
                     random_loss = loss_func(random_preds, batch_dict["random_labels"])
                     swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
-                    lm_loss = loss_func(response_outputs, batch_dict["response_labels"])
+                    lm_loss = loss_func(response_outputs.reshape([-1, roberta_tokenizer.vocab_size]),
+                                        batch_dict["response_labels"].reshape(-1))
 
                     total_loss = random_loss + swap_loss + lm_loss
 
@@ -929,8 +940,10 @@ def main(args):
 
                     # -----------------------------------------
                     # compute the accuracy
-                    acc_batch_random = compute_accuracy(random_preds, batch_dict['random_labels'])
-                    acc_batch_swap = compute_accuracy(swap_preds, batch_dict['swap_labels'])
+                    acc_batch_random = compute_accuracy(random_preds,
+                                                        batch_dict['random_labels'])
+                    acc_batch_swap = compute_accuracy(swap_preds,
+                                                      batch_dict['swap_labels'])
                     acc_batch = (acc_batch_random + acc_batch_swap) / 2
 
                     running_acc += (acc_batch - running_acc) / (batch_index + 1)
@@ -942,7 +955,17 @@ def main(args):
                     running_ppl += (np.exp(lm_loss.item()) - running_ppl) / (batch_index + 1)
 
                     # update bar
-                    train_bar.set_postfix(loss=running_loss, acc=running_acc, epoch=epoch_index)
+                    train_bar.set_postfix(loss=running_loss,
+                                          acc=running_acc,
+                                          sl=running_random_loss,
+                                          cl=running_swap_loss,
+                                          ll=running_lm_loss,
+                                          s_acc=running_random_acc,
+                                          c_acc=running_swap_acc,
+                                          ppl=running_ppl,
+                                          epoch=epoch_index)
+
+                    train_bar.update()
 
                 train_state['train_loss'].append(running_loss)
                 train_state['train_random_loss'].append(running_random_loss)
@@ -1000,6 +1023,12 @@ def main(args):
 
                     val_bar.set_postfix(loss=running_loss,
                                         acc=running_acc,
+                                        sl=running_random_loss,
+                                        cl=running_swap_loss,
+                                        ll=running_lm_loss,
+                                        s_acc=running_random_acc,
+                                        c_acc=running_swap_acc,
+                                        ppl=running_ppl,
                                         epoch=epoch_index)
                     val_bar.update()
 
