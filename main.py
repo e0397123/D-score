@@ -69,30 +69,37 @@ class Randomizer(object):
         return ids
 
     def get_train_example(self, train_paragraphs, train_paragraph_uids, context_window_size, split='train'):
-        if os.path.exists(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split))):
+        if os.path.exists(os.path.join(self.args.output_dir, '{}_{}_lines.pkl'.format(self.args.corpus_name, split))):
             return self._create_example(pickle.load(open(os.path.join(self.args.output_dir,
-                                                                      '{}_lines.pkl'.format(split)), 'rb')), split)
+                                                                      '{}_{}_lines.pkl'.format(self.args.corpus_name,
+                                                                                               split)), 'rb')), split)
         else:
             lines = self._read_data(train_paragraphs, train_paragraph_uids, context_window_size, split)
-            pickle.dump(lines, open(os.path.join(self.args.output_dir, 'train_lines.pkl'), 'wb'))
+            pickle.dump(lines, open(os.path.join(self.args.output_dir,
+                                                 '{}_{}_lines.pkl'.format(self.args.corpus_name, split)), 'wb'))
             return self._create_example(lines, split)
 
     def get_valid_example(self, valid_paragraphs, valid_paragraph_uids, context_window_size, split='valid'):
-        if os.path.exists(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split))):
+        if os.path.exists(os.path.join(self.args.output_dir, '{}_{}_lines.pkl'.format(self.args.corpus_name,
+                                                                                      split))):
             return self._create_example(pickle.load(open(os.path.join(self.args.output_dir,
-                                                                      'valid_lines.pkl'), 'rb')), split)
+                                                                      '{}_{}_lines.pkl'.format(self.args.corpus_name,
+                                                                                               split)), 'rb')), split)
         else:
             lines = self._read_data(valid_paragraphs, valid_paragraph_uids, context_window_size, split)
-            pickle.dump(lines, open(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split)), 'wb'))
+            pickle.dump(lines, open(os.path.join(self.args.output_dir,
+                                                 '{}_{}_lines.pkl'.format(self.args.corpus_name, split)), 'wb'))
             return self._create_example(lines, split)
 
     def get_eval_example(self, eval_paragraphs, eval_paragraph_uids, context_window_size, split):
-        if os.path.exists(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split))):
+        if os.path.exists(os.path.join(self.args.output_dir, '{}_{}_lines.pkl'.format(self.args.corpus_name, split))):
             return self._create_example(pickle.load(open(os.path.join(self.args.output_dir,
-                                                                      '{}_lines.pkl'.format(split)), 'rb')), split)
+                                                                      '{}_{}_lines.pkl'.format(self.args.corpus_name,
+                                                                                               split)), 'rb')), split)
         else:
             lines = self._read_data(eval_paragraphs, eval_paragraph_uids, context_window_size, split)
-            pickle.dump(lines, open(os.path.join(self.args.output_dir, '{}_lines.pkl'.format(split)), 'wb'))
+            pickle.dump(lines, open(os.path.join(self.args.output_dir, '{}_{}_lines.pkl'.format(self.args.corpus_name,
+                                                                                                split)), 'wb'))
             return self._create_example(lines, split)
 
     def _create_example(self, lines, set_type):
@@ -393,7 +400,8 @@ class DscoreDataset(Dataset):
         return len(self) // batch_size
 
 
-def prepare_data(examples,
+def prepare_data(args,
+                 examples,
                  utterance_label_map,
                  max_pre_len,
                  max_post_len,
@@ -403,7 +411,7 @@ def prepare_data(examples,
                  output_dir=None,
                  split='train'):
 
-    feature_fname = os.path.join(output_dir, "{}_feature_list.pkl".format(split))
+    feature_fname = os.path.join(output_dir, "{}_{}_feature_list.pkl".format(args.corpus_name, split))
     if os.path.exists(feature_fname):
         feature_list = pickle.load(open(feature_fname, 'rb'))
     else:
@@ -709,7 +717,9 @@ def update_train_state(args, model, train_state):
         a new train_state
     """
 
-    torch.save(model.state_dict(), train_state['model_filename'] + '_{:03d}.pt'.format(train_state['epoch_index']))
+    torch.save(model.state_dict(),
+               os.path.join(args.output_dir,
+                            train_state['model_filename'] + '_{:03d}.pt'.format(train_state['epoch_index'])))
     train_state['stop_early'] = False
 
     # Save model if performance improved
@@ -724,7 +734,9 @@ def update_train_state(args, model, train_state):
         else:
             # Save the best model
             if loss_t < train_state['early_stopping_best_val']:
-                torch.save(model.state_dict(), train_state['model_filename'] + '_best.pt')
+                torch.save(model.state_dict(),
+                           os.path.join(args.output_dir,
+                                        train_state['model_filename'] + '_best.pt'))
 
             # Reset early stopping step
             train_state['early_stopping_step'] = 0
@@ -785,7 +797,7 @@ def main(args):
     num_warmup_steps = None
 
     if args.do_train and args.do_eval:
-        if not os.path.exists(os.path.join(args.output_dir, 'train_lines.pkl')):
+        if not os.path.exists(os.path.join(args.output_dir, '{}_train_lines.pkl'.format(args.corpus_name))):
             train_paragraphs, train_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'train')
         else:
             train_paragraphs, train_paragraph_uids = None, None
@@ -807,7 +819,7 @@ def main(args):
         logger.info("  Batch size = %d", args.batch_size)
         logger.info("  Num steps = %d", num_train_steps)
 
-        if not os.path.exists(os.path.join(args.output_dir, 'valid_lines.pkl')):
+        if not os.path.exists(os.path.join(args.output_dir, '{}_valid_lines.pkl'.format(args.corpus_name))):
             valid_paragraphs, valid_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'valid')
         else:
             valid_paragraphs, valid_paragraph_uids = None, None
@@ -845,14 +857,14 @@ def main(args):
 
         logger.info("preparing training data --------------------------------------------------")
 
-        train_dataset = prepare_data(train_examples, utterance_label_map, args.max_pre_len,
+        train_dataset = prepare_data(args, train_examples, utterance_label_map, args.max_pre_len,
                                      args.max_post_len, args.max_seq_len,
                                      tokenizer=roberta_tokenizer, is_training=True,
                                      output_dir=args.output_dir, split='train')
 
         logger.info("preparing validating data --------------------------------------------------")
 
-        valid_dataset = prepare_data(valid_examples, utterance_label_map, args.max_pre_len,
+        valid_dataset = prepare_data(args, valid_examples, utterance_label_map, args.max_pre_len,
                                      args.max_post_len, args.max_seq_len,
                                      tokenizer=roberta_tokenizer, is_training=True,
                                      output_dir=args.output_dir, split='valid')
@@ -919,18 +931,17 @@ def main(args):
                     lm_loss = loss_func(response_outputs.reshape([-1, roberta_tokenizer.vocab_size]),
                                         batch_dict["response_labels"].reshape(-1))
 
-                    total_loss = random_loss + swap_loss + lm_loss
+                    total_loss = random_loss * 10 + swap_loss * 10 + lm_loss
 
                     loss_batch = total_loss.item()
 
                     running_loss += (loss_batch - running_loss) / (batch_index + 1)
 
-                    running_random_loss += (random_loss.item() - running_random_loss) / (batch_index + 1)
+                    running_random_loss += (random_loss.item() * 10 - running_random_loss) / (batch_index + 1)
 
-                    running_swap_loss += (swap_loss.item() - running_swap_loss) / (batch_index + 1)
+                    running_swap_loss += (swap_loss.item() * 10 - running_swap_loss) / (batch_index + 1)
 
                     running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
-
 
                     # step 4. use loss to produce gradients
                     total_loss.backward()
@@ -994,17 +1005,18 @@ def main(args):
                     # step 2. compute the loss
                     random_loss = loss_func(random_preds, batch_dict["random_labels"])
                     swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
-                    lm_loss = loss_func(response_outputs, batch_dict["response_labels"])
+                    lm_loss = loss_func(response_outputs.reshape([-1, roberta_tokenizer.vocab_size]),
+                                                                 batch_dict["response_labels"].reshape(-1))
 
-                    total_loss = random_loss + swap_loss + lm_loss
+                    total_loss = random_loss * 10 + swap_loss * 10 + lm_loss
 
                     loss_batch = total_loss.item()
 
                     running_loss += (loss_batch - running_loss) / (batch_index + 1)
 
-                    running_random_loss += (random_loss.item() - running_random_loss) / (batch_index + 1)
+                    running_random_loss += (random_loss.item() * 10 - running_random_loss) / (batch_index + 1)
 
-                    running_swap_loss += (swap_loss.item() - running_swap_loss) / (batch_index + 1)
+                    running_swap_loss += (swap_loss.item() * 10 - running_swap_loss) / (batch_index + 1)
 
                     running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
 

@@ -89,21 +89,19 @@ class DscoreModel(nn.Module):
                             bidirectional=bidirectional,
                             batch_first=True)
         self.num_directions = 2 if bidirectional else 1
-        self.fc1_random = nn.Linear(hidden_dim * self.num_directions * 2 + 1, hidden_dim * self.num_directions)
-        self.fc2_random = nn.Linear(hidden_dim * self.num_directions, hidden_dim)
-        self.fc3_random = nn.Linear(hidden_dim, num_random_classes)
-        self.fc1_swap = nn.Linear(hidden_dim * self.num_directions * 2 + 1, hidden_dim * self.num_directions)
-        self.fc2_swap = nn.Linear(hidden_dim * self.num_directions, hidden_dim)
-        self.fc3_swap = nn.Linear(hidden_dim, num_swap_classes)
+        self.fc1_random = nn.Linear(hidden_dim * 2 + 1, hidden_dim)
+        # self.fc2_random = nn.Linear(hidden_dim * self.num_directions, hidden_dim)
+        self.fc2_random = nn.Linear(hidden_dim, num_random_classes)
+        self.fc1_swap = nn.Linear(hidden_dim * 2 + 1, hidden_dim)
+        #self.fc2_swap = nn.Linear(hidden_dim * self.num_directions, hidden_dim)
+        self.fc2_swap = nn.Linear(hidden_dim, num_swap_classes)
         self.num_lstm_layer = num_lstm_layer
         self.lstm_units = hidden_dim
-        self.m_random = Variable(torch.fmod(torch.empty([hidden_dim * self.num_directions,
-                                                         hidden_dim * self.num_directions]), 2)).to(device)
-        nn.init.normal_(self.m_random, std=0.02)
+        self.m = nn.Parameter(torch.fmod(torch.empty([hidden_dim, hidden_dim]), 2)).to(device)
+        nn.init.normal_(self.m, std=0.02)
 
-        self.m_swap = Variable(torch.fmod(torch.empty([hidden_dim * self.num_directions,
-                                                       hidden_dim * self.num_directions]), 2)).to(device)
-        nn.init.normal_(self.m_swap, std=0.02)
+        # self.m_swap = nn.Parameter(torch.fmod(torch.empty([hidden_dim, hidden_dim]), 2)).to(device)
+        # nn.init.normal_(self.m_swap, std=0.02)
 
         self.gelu = nn.GELU()
         self.layernorm = nn.LayerNorm((hidden_dim, ), elementwise_affine=True)
@@ -148,7 +146,7 @@ class DscoreModel(nn.Module):
 
     def forward(self, feature, batch_size):
 
-        h_0, c_0 = self.init_hidden(batch_size)
+        # h_0, c_0 = self.init_hidden(batch_size)
 
         # --------------------------------------------------------------------------------------------------------------
         # random forward lstm output
@@ -164,15 +162,17 @@ class DscoreModel(nn.Module):
         random_forward_bert_output = self.downsample_layer(random_forward_bert_output)
         if self.is_training:
             random_forward_bert_output = self.dropout_layer(random_forward_bert_output)
-        random_forward_packed_embedded = pack_padded_sequence(random_forward_bert_output,
-                                                              x_random_length_forward,
-                                                              batch_first=True,
-                                                              enforce_sorted=False)
-        random_forward_lstm_output, (_, _) = self.lstm(random_forward_packed_embedded, (h_0, c_0))
-        random_forward_output_unpacked, random_forward_output_lengths = pad_packed_sequence(random_forward_lstm_output,
-                                                                                            batch_first=True)
-        # [batch_size, hidden_dim * 2]
-        random_forward_out = random_forward_output_unpacked[:, -1, :]
+
+        # random_forward_packed_embedded = pack_padded_sequence(random_forward_bert_output,
+        #                                                       x_random_length_forward,
+        #                                                       batch_first=True,
+        #                                                       enforce_sorted=False)
+        # random_forward_lstm_output, (_, _) = self.lstm(random_forward_packed_embedded, (h_0, c_0))
+        # random_forward_output_unpacked, random_forward_output_lengths = pad_packed_sequence(random_forward_lstm_output,
+        #                                                                                     batch_first=True)
+        # # [batch_size, hidden_dim * 2]
+        # random_forward_out = random_forward_output_unpacked[:, -1, :]
+        random_forward_out = torch.mean(random_forward_bert_output, dim=1)
 
         # --------------------------------------------------------------------------------------------------------------
         # random backward lstm output
@@ -182,28 +182,29 @@ class DscoreModel(nn.Module):
         # random_backward_bert_inputs = {'input_ids': x_random_backward, 'attention_mask': x_random_mask_backward}
         # [batch_size, max_post, encoder_dim]
         random_backward_bert_output = self.get_encoder_output(x_random_backward,
-                                                             x_random_mask_backward,
-                                                             is_decoder=False)
+                                                              x_random_mask_backward,
+                                                              is_decoder=False)
         # [batch_size, max_post, hidden_dim]
         random_backward_bert_output = self.downsample_layer(random_backward_bert_output)
         if self.is_training:
             random_backward_bert_output = self.dropout_layer(random_backward_bert_output)
-        random_backward_packed_embedded = pack_padded_sequence(random_backward_bert_output,
-                                                               x_random_length_backward,
-                                                               batch_first=True,
-                                                               enforce_sorted=False)
-        random_backward_lstm_output, (_, _) = self.lstm(random_backward_packed_embedded,
-                                                        (h_0, c_0))
-        random_backward_output_unpacked, \
-            random_backward_output_lengths = pad_packed_sequence(random_backward_lstm_output,
-                                                                 batch_first=True)
-        # [batch_size, hidden_dim * 2]
-        random_backward_out = random_backward_output_unpacked[:, -1, :]
+        # random_backward_packed_embedded = pack_padded_sequence(random_backward_bert_output,
+        #                                                        x_random_length_backward,
+        #                                                        batch_first=True,
+        #                                                        enforce_sorted=False)
+        # random_backward_lstm_output, (_, _) = self.lstm(random_backward_packed_embedded,
+        #                                                 (h_0, c_0))
+        # random_backward_output_unpacked, \
+        #     random_backward_output_lengths = pad_packed_sequence(random_backward_lstm_output,
+        #                                                          batch_first=True)
+        # # [batch_size, hidden_dim * 2]
+        # random_backward_out = random_backward_output_unpacked[:, -1, :]
+        random_backward_out = torch.mean(random_backward_bert_output, dim=1)
 
         # --------------------------------------------------------------------------------------------------------------
         # matching layer
         # [batch_size, hidden_dim*2]
-        qtm_random = torch.tensordot(random_forward_out, self.m_random, dims=1)
+        qtm_random = torch.tensordot(random_forward_out, self.m, dims=1)
         # quadratic random feature
         # [batch_size, hidden_dim*2]
         quadratic_random = torch.sum(qtm_random * random_backward_out, dim=1, keepdim=True)
@@ -219,14 +220,14 @@ class DscoreModel(nn.Module):
             drop1_random = self.dropout_layer(dense1_random)
         else:
             drop1_random = dense1_random
-        # [batch_size, hidden_size]
-        dense2_random = self.fc2_random(drop1_random)
-        if self.is_training:
-            drop2_random = self.dropout_layer(dense2_random)
-        else:
-            drop2_random = dense2_random
+        # # [batch_size, hidden_size]
+        # dense2_random = self.fc2_random(drop1_random)
+        # if self.is_training:
+        #     drop2_random = self.dropout_layer(dense2_random)
+        # else:
+        #     drop2_random = dense2_random
         # [batch_size, num_classes]
-        random_preds = self.fc3_random(drop2_random)
+        random_preds = self.fc2_random(drop1_random)
 
         random_prob = F.softmax(random_preds, dim=-1)
 
@@ -244,15 +245,16 @@ class DscoreModel(nn.Module):
         swap_forward_bert_output = self.downsample_layer(swap_forward_bert_output)
         if self.is_training:
             swap_forward_bert_output = self.dropout_layer(swap_forward_bert_output)
-        swap_forward_packed_embedded = pack_padded_sequence(swap_forward_bert_output,
-                                                            x_swap_length_forward,
-                                                            batch_first=True,
-                                                            enforce_sorted=False)
-        swap_forward_lstm_output, (_, _) = self.lstm(swap_forward_packed_embedded, (h_0, c_0))
-        swap_forward_output_unpacked, swap_forward_output_lengths = pad_packed_sequence(swap_forward_lstm_output,
-                                                                                        batch_first=True)
-        # [batch_size, hidden_dim * 2]
-        swap_forward_out = swap_forward_output_unpacked[:, -1, :]
+        # swap_forward_packed_embedded = pack_padded_sequence(swap_forward_bert_output,
+        #                                                     x_swap_length_forward,
+        #                                                     batch_first=True,
+        #                                                     enforce_sorted=False)
+        # swap_forward_lstm_output, (_, _) = self.lstm(swap_forward_packed_embedded, (h_0, c_0))
+        # swap_forward_output_unpacked, swap_forward_output_lengths = pad_packed_sequence(swap_forward_lstm_output,
+        #                                                                                 batch_first=True)
+        # # [batch_size, hidden_dim * 2]
+        # swap_forward_out = swap_forward_output_unpacked[:, -1, :]
+        swap_forward_out = torch.mean(swap_forward_bert_output, dim=1)
 
         # --------------------------------------------------------------------------------------------------------------
         # swap backward lstm output
@@ -261,26 +263,27 @@ class DscoreModel(nn.Module):
         x_swap_mask_backward = feature["swap_backward_segment_ids"]
         # [batch_size, max_post, encoder_dim]
         swap_backward_bert_output = self.get_encoder_output(x_swap_backward,
-                                                           x_swap_mask_backward,
-                                                           is_decoder=False)
+                                                            x_swap_mask_backward,
+                                                            is_decoder=False)
         # [batch_size, max_post, hidden_dim]
         swap_backward_bert_output = self.downsample_layer(swap_backward_bert_output)
         if self.is_training:
             swap_backward_bert_output = self.dropout_layer(swap_backward_bert_output)
-        swap_backward_packed_embedded = pack_padded_sequence(swap_backward_bert_output,
-                                                             x_swap_length_backward,
-                                                             batch_first=True,
-                                                             enforce_sorted=False)
-        swap_backward_lstm_output, (_, _) = self.lstm(swap_backward_packed_embedded, (h_0, c_0))
-        swap_backward_output_unpacked, swap_backward_output_lengths = pad_packed_sequence(swap_backward_lstm_output,
-                                                                                          batch_first=True)
-        # [batch_size, hidden_dim * 2]
-        swap_backward_out = swap_backward_output_unpacked[:, -1, :]
+        # swap_backward_packed_embedded = pack_padded_sequence(swap_backward_bert_output,
+        #                                                      x_swap_length_backward,
+        #                                                      batch_first=True,
+        #                                                      enforce_sorted=False)
+        # swap_backward_lstm_output, (_, _) = self.lstm(swap_backward_packed_embedded, (h_0, c_0))
+        # swap_backward_output_unpacked, swap_backward_output_lengths = pad_packed_sequence(swap_backward_lstm_output,
+        #                                                                                   batch_first=True)
+        # # [batch_size, hidden_dim * 2]
+        # swap_backward_out = swap_backward_output_unpacked[:, -1, :]
+        swap_backward_out = torch.mean(swap_backward_bert_output, dim=1)
 
         # --------------------------------------------------------------------------------------------------------------
         # matching layer
         # [batch_size, hidden_dim*2]
-        qtm_swap = torch.tensordot(swap_forward_out, self.m_swap, dims=1)
+        qtm_swap = torch.tensordot(swap_forward_out, self.m, dims=1)
         # quadratic swap feature
         # [batch_size, hidden_dim*2]
         quadratic_swap = torch.sum(qtm_swap * swap_backward_out, dim=1, keepdim=True)
@@ -296,14 +299,14 @@ class DscoreModel(nn.Module):
             drop1_swap = self.dropout_layer(dense1_swap)
         else:
             drop1_swap = dense1_swap
-        # [batch_size, hidden_size]
-        dense2_swap = self.fc2_swap(drop1_swap)
-        if self.is_training:
-            drop2_swap = self.dropout_layer(dense2_swap)
-        else:
-            drop2_swap = dense2_swap
+        # # [batch_size, hidden_size]
+        # dense2_swap = self.fc2_swap(drop1_swap)
+        # if self.is_training:
+        #     drop2_swap = self.dropout_layer(dense2_swap)
+        # else:
+        #     drop2_swap = dense2_swap
         # [batch_size, num_classes]
-        swap_preds = self.fc3_swap(drop2_swap)
+        swap_preds = self.fc2_swap(drop1_swap)
 
         swap_prob = F.softmax(swap_preds, dim=-1)
 
