@@ -997,52 +997,54 @@ def main(args):
                 running_acc = 0.
                 model.eval()
 
-                for batch_index, batch_dict in enumerate(batch_generator):
-                    # step 1. compute the output
-                    random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
-                                                                                               batch_size=args.batch_size)
+                with torch.no_grad():
 
-                    # step 2. compute the loss
-                    random_loss = loss_func(random_preds, batch_dict["random_labels"])
-                    swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
-                    lm_loss = loss_func(response_outputs.reshape([-1, roberta_tokenizer.vocab_size]),
-                                                                 batch_dict["response_labels"].reshape(-1))
+                    for batch_index, batch_dict in enumerate(batch_generator):
+                        # step 1. compute the output
+                        random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
+                                                                                                   batch_size=args.batch_size)
 
-                    total_loss = random_loss * 10 + swap_loss * 10 + lm_loss
+                        # step 2. compute the loss
+                        random_loss = loss_func(random_preds, batch_dict["random_labels"])
+                        swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
+                        lm_loss = loss_func(response_outputs.reshape([-1, roberta_tokenizer.vocab_size]),
+                                                                     batch_dict["response_labels"].reshape(-1))
 
-                    loss_batch = total_loss.item()
+                        total_loss = random_loss * 10 + swap_loss * 10 + lm_loss
 
-                    running_loss += (loss_batch - running_loss) / (batch_index + 1)
+                        loss_batch = total_loss.item()
 
-                    running_random_loss += (random_loss.item() * 10 - running_random_loss) / (batch_index + 1)
+                        running_loss += (loss_batch - running_loss) / (batch_index + 1)
 
-                    running_swap_loss += (swap_loss.item() * 10 - running_swap_loss) / (batch_index + 1)
+                        running_random_loss += (random_loss.item() * 10 - running_random_loss) / (batch_index + 1)
 
-                    running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
+                        running_swap_loss += (swap_loss.item() * 10 - running_swap_loss) / (batch_index + 1)
 
-                    # step 3. compute the accuracy
-                    acc_batch_random = compute_accuracy(random_preds, batch_dict['random_labels'])
-                    acc_batch_swap = compute_accuracy(swap_preds, batch_dict['swap_labels'])
-                    acc_batch = (acc_batch_random + acc_batch_swap) / 2
+                        running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
 
-                    running_acc += (acc_batch - running_acc) / (batch_index + 1)
+                        # step 3. compute the accuracy
+                        acc_batch_random = compute_accuracy(random_preds, batch_dict['random_labels'])
+                        acc_batch_swap = compute_accuracy(swap_preds, batch_dict['swap_labels'])
+                        acc_batch = (acc_batch_random + acc_batch_swap) / 2
 
-                    running_random_acc += (acc_batch_random - running_random_acc) / (batch_index + 1)
+                        running_acc += (acc_batch - running_acc) / (batch_index + 1)
 
-                    running_swap_acc += (acc_batch_swap - running_swap_acc) / (batch_index + 1)
+                        running_random_acc += (acc_batch_random - running_random_acc) / (batch_index + 1)
 
-                    running_ppl += (np.exp(lm_loss.item()) - running_ppl) / (batch_index + 1)
+                        running_swap_acc += (acc_batch_swap - running_swap_acc) / (batch_index + 1)
 
-                    val_bar.set_postfix(loss=running_loss,
-                                        acc=running_acc,
-                                        sl=running_random_loss,
-                                        cl=running_swap_loss,
-                                        ll=running_lm_loss,
-                                        s_acc=running_random_acc,
-                                        c_acc=running_swap_acc,
-                                        ppl=running_ppl,
-                                        epoch=epoch_index)
-                    val_bar.update()
+                        running_ppl += (np.exp(lm_loss.item()) - running_ppl) / (batch_index + 1)
+
+                        val_bar.set_postfix(loss=running_loss,
+                                            acc=running_acc,
+                                            sl=running_random_loss,
+                                            cl=running_swap_loss,
+                                            ll=running_lm_loss,
+                                            s_acc=running_random_acc,
+                                            c_acc=running_swap_acc,
+                                            ppl=running_ppl,
+                                            epoch=epoch_index)
+                        val_bar.update()
 
                 train_state['val_loss'].append(running_loss)
                 train_state['val_random_loss'].append(running_random_loss)
@@ -1148,9 +1150,14 @@ if __name__ == "__main__":
                         help='number of utterances in a context window',
                         type=int)
 
-    parser.add_argument('--batch_size',
+    parser.add_argument('--train_batch_size',
                         default=32,
-                        help='Total batch size for training, eval and predict.',
+                        help='Total batch size for training.',
+                        type=int)
+
+    parser.add_argument('--eval_batch_size',
+                        default=32,
+                        help='Total batch size for eval and predict.',
                         type=int)
 
     parser.add_argument('--num_train_epochs',
