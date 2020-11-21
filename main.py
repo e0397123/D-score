@@ -808,7 +808,7 @@ def main(args):
                                                      split='train')
 
         num_train_steps = int(
-            len(train_examples) * 1.0 / args.batch_size * args.num_train_epochs)
+            len(train_examples) * 1.0 / args.train_batch_size * args.num_train_epochs)
         if num_train_steps < 1:
             raise AttributeError('training data is so small...')
 
@@ -816,7 +816,7 @@ def main(args):
 
         logger.info("***** Running training *****")
         logger.info("  Num examples = %d", len(train_examples))
-        logger.info("  Batch size = %d", args.batch_size)
+        logger.info("  Batch size = %d", args.train_batch_size)
         logger.info("  Num steps = %d", num_train_steps)
 
         if not os.path.exists(os.path.join(args.output_dir, '{}_valid_lines.pkl'.format(args.corpus_name))):
@@ -829,12 +829,12 @@ def main(args):
                                                      context_window_size=args.window_size,
                                                      split='valid')
 
-        num_valid_steps = int(len(valid_examples) * 1.0 / args.batch_size)
+        num_valid_steps = int(len(valid_examples) * 1.0 / args.eval_batch_size)
 
         # 打印验证集数据信息
         logger.info("***** Running evaluation *****")
         logger.info("  Num examples = %d", len(valid_examples))
-        logger.info("  Batch size = %d", args.batch_size)
+        logger.info("  Batch size = %d", args.eval_batch_size)
         logger.info("  Num valid steps = %d", num_valid_steps)
 
     utterance_label_list = processor.get_sentence_ids(args.data_dir, args.corpus_name)
@@ -883,12 +883,12 @@ def main(args):
                          position=0)
 
         train_bar = tqdm(desc='split=train',
-                         total=train_dataset.get_num_batches(args.batch_size),
+                         total=train_dataset.get_num_batches(args.train_batch_size),
                          position=1,
                          leave=True)
 
         val_bar = tqdm(desc='split=val',
-                       total=valid_dataset.get_num_batches(args.batch_size),
+                       total=valid_dataset.get_num_batches(args.eval_batch_size),
                        position=1,
                        leave=True)
 
@@ -902,7 +902,7 @@ def main(args):
 
                 # setup: batch generator, set loss and acc to 0, set train mode on
                 batch_generator = generate_batches(train_dataset,
-                                                   batch_size=args.batch_size,
+                                                   batch_size=args.train_batch_size,
                                                    device=device)
                 running_loss = 0.0
                 running_random_loss = 0.0
@@ -923,7 +923,7 @@ def main(args):
 
                     # step 2. compute the output
                     random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
-                                                                                               batch_size=args.batch_size)
+                                                                                               batch_size=args.train_batch_size)
 
                     # step 3. compute the loss
                     random_loss = loss_func(random_preds, batch_dict["random_labels"])
@@ -991,7 +991,7 @@ def main(args):
 
                 # setup: batch generator, set loss and acc to 0, set eval mode on
                 batch_generator = generate_batches(valid_dataset,
-                                                   batch_size=args.batch_size,
+                                                   batch_size=args.eval_batch_size,
                                                    device=device)
                 running_loss = 0.
                 running_acc = 0.
@@ -1002,7 +1002,7 @@ def main(args):
                     for batch_index, batch_dict in enumerate(batch_generator):
                         # step 1. compute the output
                         random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
-                                                                                                   batch_size=args.batch_size)
+                                                                                                   batch_size=args.eval_batch_size)
 
                         # step 2. compute the loss
                         random_loss = loss_func(random_preds, batch_dict["random_labels"])
