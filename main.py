@@ -10,7 +10,7 @@ from __future__ import print_function
 
 import os
 import torch
-import codecs
+import json
 import pickle
 import pandas as pd
 import random
@@ -851,7 +851,18 @@ def main(args):
 
     model = model.to(device)
 
+    if args.do_reload:
+        model.load_state_dict(torch.load(args.pretrained_path))
+
     logger.info("Done initializing D-score model --------------------------------------------------")
+
+    # loss and optimizer
+    loss_func = torch.nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                     mode='min', factor=0.5,
+                                                     patience=1)
+    train_state = make_train_state(args)
 
     if args.do_train and args.do_eval:
 
@@ -868,15 +879,6 @@ def main(args):
                                      args.max_post_len, args.max_seq_len,
                                      tokenizer=roberta_tokenizer, is_training=True,
                                      output_dir=args.output_dir, split='valid')
-
-        train_state = make_train_state(args)
-
-        # loss and optimizer
-        loss_func = torch.nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
-                                                         mode='min', factor=0.5,
-                                                         patience=1)
 
         epoch_bar = tqdm(desc='training routine',
                          total=args.num_train_epochs,
@@ -993,8 +995,14 @@ def main(args):
                 batch_generator = generate_batches(valid_dataset,
                                                    batch_size=args.eval_batch_size,
                                                    device=device)
-                running_loss = 0.
-                running_acc = 0.
+                running_loss = 0.0
+                running_random_loss = 0.0
+                running_swap_loss = 0.0
+                running_lm_loss = 0.0
+                running_acc = 0.0
+                running_random_acc = 0.0
+                running_swap_acc = 0.0
+                running_ppl = 0.0
                 model.eval()
 
                 with torch.no_grad():
@@ -1073,6 +1081,107 @@ def main(args):
 
         except KeyboardInterrupt:
             print("Exiting loop")
+
+    if args.do_predict:
+
+        if not os.path.exists(os.path.join(args.output_dir, '{}_test_lines.pkl'.format(args.corpus_name))):
+            test_paragraphs, test_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'test')
+        else:
+            test_paragraphs, test_paragraph_uids = None, None
+
+        test_examples = processor.get_eval_example(test_paragraphs,
+                                                   test_paragraph_uids,
+                                                   context_window_size=args.window_size,
+                                                   split='test')
+
+        test_dataset = prepare_data(args, test_examples, utterance_label_map, args.max_pre_len,
+                                     args.max_post_len, args.max_seq_len,
+                                     tokenizer=roberta_tokenizer, is_training=True,
+                                     output_dir=args.output_dir, split='test')
+
+        test_bar = tqdm(desc='split=test',
+                        total=test_dataset.get_num_batches(args.eval_batch_size),
+                        position=1,
+                        leave=True)
+
+        logger.info("start inference --------------------------------------------------")
+
+        # Iterate over test dataset
+
+        # setup: batch generator, set loss and acc to 0, set eval mode on
+        batch_generator = generate_batches(test_dataset,
+                                           batch_size=args.eval_batch_size,
+                                           device=device)
+        running_loss = 0.0
+        running_random_loss = 0.0
+        running_swap_loss = 0.0
+        running_lm_loss = 0.0
+        running_acc = 0.0
+        running_random_acc = 0.0
+        running_swap_acc = 0.0
+        running_ppl = 0.0
+
+        model.eval()
+
+        with torch.no_grad():
+
+            for batch_index, batch_dict in enumerate(batch_generator):
+                # step 1. compute the output
+                random_preds, random_prob, swap_preds, swap_prob, response_outputs = model(feature=batch_dict,
+                                                                                           batch_size=args.eval_batch_size)
+
+                # step 2. compute the loss
+                random_loss = loss_func(random_preds, batch_dict["random_labels"])
+                swap_loss = loss_func(swap_preds, batch_dict["swap_labels"])
+                lm_loss = loss_func(response_outputs.reshape([-1, roberta_tokenizer.vocab_size]),
+                                    batch_dict["response_labels"].reshape(-1))
+
+                total_loss = random_loss * 10 + swap_loss * 10 + lm_loss
+
+                loss_batch = total_loss.item()
+
+                running_loss += (loss_batch - running_loss) / (batch_index + 1)
+
+                running_random_loss += (random_loss.item() * 10 - running_random_loss) / (batch_index + 1)
+
+                running_swap_loss += (swap_loss.item() * 10 - running_swap_loss) / (batch_index + 1)
+
+                running_lm_loss += (lm_loss.item() - running_lm_loss) / (batch_index + 1)
+
+                # step 3. compute the accuracy
+                acc_batch_random = compute_accuracy(random_preds, batch_dict['random_labels'])
+                acc_batch_swap = compute_accuracy(swap_preds, batch_dict['swap_labels'])
+                acc_batch = (acc_batch_random + acc_batch_swap) / 2
+
+                running_acc += (acc_batch - running_acc) / (batch_index + 1)
+
+                running_random_acc += (acc_batch_random - running_random_acc) / (batch_index + 1)
+
+                running_swap_acc += (acc_batch_swap - running_swap_acc) / (batch_index + 1)
+
+                running_ppl += (np.exp(lm_loss.item()) - running_ppl) / (batch_index + 1)
+
+                test_bar.set_postfix(loss=running_loss,
+                                     acc=running_acc,
+                                     sl=running_random_loss,
+                                     cl=running_swap_loss,
+                                     ll=running_lm_loss,
+                                     s_acc=running_random_acc,
+                                     c_acc=running_swap_acc,
+                                     ppl=running_ppl)
+                test_bar.update()
+
+        train_state['test_loss'].append(running_loss)
+        train_state['test_random_loss'].append(running_random_loss)
+        train_state['test_swap_loss'].append(running_swap_loss)
+        train_state['test_lm_loss'].append(running_lm_loss)
+        train_state['test_acc'].append(running_acc)
+        train_state['test_random_acc'].append(running_random_acc)
+        train_state['test_swap_acc'].append(running_swap_acc)
+        train_state['test_ppl'].append(running_ppl)
+
+    with open(os.path.join(args.output_dir, 'results.json'), 'w') as fp:
+        json.dump(train_state, fp)
 
 
 if __name__ == "__main__":
@@ -1217,6 +1326,15 @@ if __name__ == "__main__":
     parser.add_argument('--do_predict',
                         action="store_true",
                         help='Whether to run the predict in inference mode on the test set.')
+
+    parser.add_argument('--do_reload',
+                        action="store_true",
+                        help='Whether to reload model.')
+
+    parser.add_argument('--pretrained_path',
+                        default="dnli_model_000.pt",
+                        help='pretrained model state dict',
+                        type=str)
 
     parser.add_argument('--do_lower_case',
                         action="store_false",
