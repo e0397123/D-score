@@ -1095,9 +1095,9 @@ def main(args):
                                                    split='test')
 
         test_dataset = prepare_data(args, test_examples, utterance_label_map, args.max_pre_len,
-                                     args.max_post_len, args.max_seq_len,
-                                     tokenizer=roberta_tokenizer, is_training=True,
-                                     output_dir=args.output_dir, split='test')
+                                    args.max_post_len, args.max_seq_len,
+                                    tokenizer=roberta_tokenizer, is_training=False,
+                                    output_dir=args.output_dir, split='test')
 
         test_bar = tqdm(desc='split=test',
                         total=test_dataset.get_num_batches(args.eval_batch_size),
@@ -1171,14 +1171,14 @@ def main(args):
                                      ppl=running_ppl)
                 test_bar.update()
 
-        train_state['test_loss'].append(running_loss)
-        train_state['test_random_loss'].append(running_random_loss)
-        train_state['test_swap_loss'].append(running_swap_loss)
-        train_state['test_lm_loss'].append(running_lm_loss)
-        train_state['test_acc'].append(running_acc)
-        train_state['test_random_acc'].append(running_random_acc)
-        train_state['test_swap_acc'].append(running_swap_acc)
-        train_state['test_ppl'].append(running_ppl)
+        train_state['test_loss'] = running_loss
+        train_state['test_random_loss'] = running_random_loss
+        train_state['test_swap_loss'] = running_swap_loss
+        train_state['test_lm_loss'] = running_lm_loss
+        train_state['test_acc'] = running_acc
+        train_state['test_random_acc'] = running_random_acc
+        train_state['test_swap_acc'] = running_swap_acc
+        train_state['test_ppl'] = running_ppl
 
     with open(os.path.join(args.output_dir, 'results.json'), 'w') as fp:
         json.dump(train_state, fp)
