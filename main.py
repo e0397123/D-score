@@ -133,7 +133,7 @@ class Randomizer(object):
             raise ValueError("window size must be larger than 2")
         logger.info("*************** form {} sentence triplet *****************************".format(split))
         lines = []
-        if split == 'train' or split == 'valid':
+        if split == 'train':
             for t in range(self.args.dupe_factor):
                 for idx, d in enumerate(tqdm(paragraphs)):
                     if len(d) < context_window_size:
@@ -1085,11 +1085,11 @@ def main(args):
     if args.do_predict:
 
         if not os.path.exists(os.path.join(args.output_dir, '{}_test_lines.pkl'.format(args.corpus_name))):
-            test_paragraphs, test_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'test')
+            test_paragraphs, test_paragraph_uids = processor.process_data(args.data_dir, args.corpus_name, 'valid')
         else:
             test_paragraphs, test_paragraph_uids = None, None
 
-        test_examples = processor.get_eval_example(test_paragraphs,
+        test_examples = processor.get_valid_example(test_paragraphs,
                                                    test_paragraph_uids,
                                                    context_window_size=args.window_size,
                                                    split='test')
