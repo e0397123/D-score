@@ -156,7 +156,3 @@ python main.py
 
 <hr>
 
-# 2020-11-17 
-
-Start maintaining a simplified pytorch-version at branch `torch`.
-
